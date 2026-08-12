@@ -25,8 +25,14 @@ import { STATUS_STYLE, STATUS_LABEL, TYPE_ICON } from '../../lib/calendarStyles.
 
 /** A filter button plus its panel. Closes on outside click and on Escape —
  *  Escape matters because these sit above a grid whose cells are themselves
- *  buttons, so an open panel swallows the click you meant for a date. */
-function FilterPopover({ label, summary, active, children, widthClass = 'w-52' }) {
+ *  buttons, so an open panel swallows the click you meant for a date.
+ *
+ *  Exported because LeadOverview sits on the same tab and needs an identical
+ *  control; two hand-rolled popovers side by side drift apart within a session.
+ *  If a THIRD surface wants it, that is the moment to move it to a shared
+ *  components/ui/ file — the same rule that moved STATUS_STYLE into
+ *  lib/calendarStyles.js. Until then it lives with its first user. */
+export function FilterPopover({ label, summary, active, children, widthClass = 'w-52' }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 

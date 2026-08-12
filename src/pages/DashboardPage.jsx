@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuthStore }     from '../stores/authStore.js'
 import { ActivityCalendar } from '../components/dashboard/ActivityCalendar.jsx'
 import { useCalendarFilters } from '../hooks/useCalendarFilters.js'
+import { LeadOverview }    from '../components/dashboard/LeadOverview.jsx'
+import { useLeadOverviewFilter } from '../hooks/useLeadOverviewFilter.js'
 // Mounted here so clicking a date can CREATE without navigating away — leaving
 // the Dashboard to make a meeting would lose the month you were looking at.
 // Both read their own store, so mounting them twice across pages is safe.
@@ -100,6 +102,11 @@ export function DashboardPage() {
   // has one owner.
   const calendarFilters = useCalendarFilters()
 
+  // Its own param (?leadOwner), not the calendar's ?owner — the two widgets
+  // share a tab, and sharing the param would make picking a name under the
+  // lead counts silently re-filter the calendar above them.
+  const leadFilter = useLeadOverviewFilter()
+
   return (
     <div className="space-y-5 max-w-[1600px]">
       {/* Welcome bar */}
@@ -158,6 +165,10 @@ export function DashboardPage() {
             onSetOwner={calendarFilters.setOwner}
             onClearFilters={calendarFilters.clear}
           />
+          {/* Below the calendar: the month answers "what is happening", this
+              answers "where is the pipeline". Counts only — every stage is a
+              link into the existing Leads page, not a second lead surface. */}
+          <LeadOverview owner={leadFilter.owner} onSetOwner={leadFilter.setOwner} />
           <MeetingFormModal />
           <TaskFormModal />
         </>

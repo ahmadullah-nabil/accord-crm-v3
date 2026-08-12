@@ -84,6 +84,34 @@ export async function getLeads() {
   return (data ?? []).map(toApp)
 }
 
+// ── Fetch stage facets (Dashboard Lead Overview) ──────────────────────────────
+//
+// A deliberately narrow projection: only the two columns the Dashboard counts
+// by. Not getLeads() — that pulls notes, tags and every other column to render
+// seven integers.
+//
+// Returns RAW ROWS, not counts. Counting lives in useLeadStageCounts so that
+// changing the user filter re-counts in memory instead of re-querying, and so
+// the per-stage numbers and the total always come from one payload rather than
+// from eight round trips that can disagree with each other.
+//
+// Defaults mirror toApp() above: a null stage lands in 'New' here exactly as it
+// would on the Leads page. The two surfaces must not disagree about which
+// bucket a half-written row belongs to.
+
+export async function getLeadStageFacets() {
+  const { data, error } = await supabase
+    .from('leads')
+    .select('stage, assignee')
+
+  if (error) throwClassified(error)
+
+  return (data ?? []).map((row) => ({
+    stage:    row.stage    ?? 'New',
+    assignee: row.assignee ?? '',
+  }))
+}
+
 // ── Fetch one lead ────────────────────────────────────────────────────────────
 
 export async function getLeadById(id) {
