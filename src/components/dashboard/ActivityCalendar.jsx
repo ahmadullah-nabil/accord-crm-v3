@@ -22,12 +22,16 @@ import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Calendar as CalendarIcon,
-  Clock, AlertTriangle, Check, X as XIcon, Phone, Flag, Repeat, Plus,
+  Clock, Check, X as XIcon, Plus,
 } from 'lucide-react'
 
 import { useCalendarActivities } from '../../hooks/useCalendarActivities.js'
 import { useMeetingsStore }      from '../../stores/meetingsStore.js'
 import { useTasksStore }         from '../../stores/tasksStore.js'
+import { CalendarFilterBar }     from './CalendarFilterBar.jsx'
+// Colour and icons moved to lib/ when the filter bar arrived — the grid, the
+// legend and the filters all have to agree, so they read from one definition.
+import { STATUS_STYLE, STATUS_ICON, TYPE_ICON } from '../../lib/calendarStyles.js'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -35,28 +39,6 @@ const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
-
-// Colour carries meaning, so it is defined once and used by the chips, the
-// legend and the day panel alike.
-const STATUS_STYLE = {
-  pending:   { chip: 'bg-teal-50 text-teal-800 border-teal-200',      dot: 'bg-teal-500'   },
-  completed: { chip: 'bg-slate-50 text-slate-500 border-slate-200',   dot: 'bg-slate-400'  },
-  overdue:   { chip: 'bg-rose-50 text-rose-800 border-rose-200',      dot: 'bg-rose-500'   },
-  cancelled: { chip: 'bg-slate-50 text-slate-400 border-slate-200',   dot: 'bg-slate-300'  },
-}
-
-const TYPE_ICON = {
-  Meeting:     CalendarIcon,
-  'Follow-up': Repeat,
-  Call:        Phone,
-  Deadline:    Flag,
-  Task:        Check,
-}
-
-const STATUS_ICON = {
-  overdue:   AlertTriangle,
-  cancelled: XIcon,
-}
 
 /** Local YYYY-MM-DD. toISOString() would convert to UTC and shift the date by a
  *  day for anyone east of Greenwich — in Dhaka every evening item would land on
@@ -104,9 +86,9 @@ function ItemChip({ item, onClick, compact = false }) {
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick(item) }}
       title={`${item.type} · ${item.title}${item.time ? ` · ${fmtTime(item.time)}` : ''}`}
-      className={`w-full text-left border rounded px-1.5 py-0.5 flex items-center gap-1
+      className={`w-full text-left border rounded px-1.5 py-0.5 flex items-center gap-1 min-w-0
                   hover:brightness-95 transition ${style.chip}
-                  ${compact ? 'text-[10px]' : 'text-xs'}`}
+                  ${compact ? 'text-[10px] leading-tight py-px' : 'text-xs'}`}
     >
       {StatusIcon
         ? <StatusIcon className="w-3 h-3 shrink-0" />
@@ -121,7 +103,31 @@ function ItemChip({ item, onClick, compact = false }) {
   )
 }
 
-export function ActivityCalendar({ filters = {} }) {
+/**
+ * @param {object}   props
+ * @param {object}   props.filters         { types, statuses, owner } — owned by
+ *                                         the page, held in the URL.
+ * @param {number}   props.activeFilterCount
+ * @param {Function} props.onToggleType
+ * @param {Function} props.onToggleStatus
+ * @param {Function} props.onSetOwner
+ * @param {Function} props.onClearFilters
+ *
+ * The filter BAR renders inside this component even though the filter STATE
+ * lives above it. The user options are "people with items in the month you are
+ * looking at", and the month cursor is deliberately local state here (so
+ * opening a task and coming back keeps your place). Lifting the cursor to the
+ * page to move the bar out would trade a documented behaviour for a cosmetic
+ * one; passing the state down instead costs four props.
+ */
+export function ActivityCalendar({
+  filters = {},
+  activeFilterCount = 0,
+  onToggleType,
+  onToggleStatus,
+  onSetOwner,
+  onClearFilters,
+}) {
   const navigate = useNavigate()
   const openMeeting  = useMeetingsStore((s) => s.openDetail)
   const openTask     = useTasksStore((s) => s.openDetail)
@@ -140,7 +146,7 @@ export function ActivityCalendar({ filters = {} }) {
   // Which date's create menu is open. Null when none.
   const [createFor, setCreateFor] = useState(null)
 
-  const { byDate, counts, isLoading, isError, error } =
+  const { all, items, byDate, owners, counts, isLoading, isError, error } =
     useCalendarActivities(cursor.year, cursor.month, filters)
 
   const grid = useMemo(() => buildGrid(cursor.year, cursor.month), [cursor])
@@ -220,6 +226,23 @@ export function ActivityCalendar({ filters = {} }) {
         </div>
       </div>
 
+      {/* ── Filters ────────────────────────────────────────────────────────
+          Between the month nav and the grid, because it narrows the grid and
+          not the month. Options and counts come from `all` — the whole month
+          before filtering — so the choices never shrink to only what is
+          already selected. */}
+      <CalendarFilterBar
+        filters={filters}
+        owners={owners}
+        activeCount={activeFilterCount}
+        shownCount={items.length}
+        totalCount={all.length}
+        onToggleType={onToggleType}
+        onToggleStatus={onToggleStatus}
+        onSetOwner={onSetOwner}
+        onClear={onClearFilters}
+      />
+
       {isError && (
         <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-800">
           Could not load the calendar. {error?.message}
@@ -255,7 +278,7 @@ export function ActivityCalendar({ filters = {} }) {
                 type="button"
                 key={cell.date}
                 onClick={() => setSelectedDate(isPicked ? null : cell.date)}
-                className={`group relative min-h-[92px] border-b border-r border-slate-100
+                className={`group relative min-h-[76px] border-b border-r border-slate-100
                             p-1.5 text-left align-top transition
                             ${cell.inMonth ? 'bg-white' : 'bg-slate-50/50'}
                             ${isPicked ? 'ring-2 ring-inset ring-teal-400' : 'hover:bg-teal-50/40'}`}
@@ -334,6 +357,28 @@ export function ActivityCalendar({ filters = {} }) {
       </div>
 
       {isLoading && <p className="text-xs text-slate-500">Loading activities…</p>}
+
+      {/* An empty grid has two very different causes and the user cannot tell
+          them apart by looking. Say which one it is, and offer the way out. */}
+      {!isLoading && !isError && items.length === 0 && (
+        all.length > 0 ? (
+          <p className="text-xs text-slate-500">
+            Nothing matches these filters — {all.length} item{all.length === 1 ? '' : 's'} this
+            month are hidden.{' '}
+            <button
+              type="button"
+              onClick={onClearFilters}
+              className="text-teal-700 hover:text-teal-800 font-medium underline underline-offset-2"
+            >
+              Clear filters
+            </button>
+          </p>
+        ) : (
+          <p className="text-xs text-slate-500">
+            Nothing scheduled this month. Hover a date to add a meeting or a task.
+          </p>
+        )
+      )}
 
       {/* ── Day detail ─────────────────────────────────────────────────────── */}
       {selectedDate && (

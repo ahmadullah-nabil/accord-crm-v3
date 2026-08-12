@@ -2,6 +2,7 @@ import React from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuthStore }     from '../stores/authStore.js'
 import { ActivityCalendar } from '../components/dashboard/ActivityCalendar.jsx'
+import { useCalendarFilters } from '../hooks/useCalendarFilters.js'
 // Mounted here so clicking a date can CREATE without navigating away — leaving
 // the Dashboard to make a meeting would lose the month you were looking at.
 // Both read their own store, so mounting them twice across pages is safe.
@@ -93,6 +94,12 @@ export function DashboardPage() {
     setSearchParams(params, { replace: true })
   }
 
+  // Filters live in the URL beside ?tab= for the same reason: a filtered month
+  // survives a refresh, survives the back button after opening a task, and can
+  // be shared as a link. Owned here rather than inside the calendar so the URL
+  // has one owner.
+  const calendarFilters = useCalendarFilters()
+
   return (
     <div className="space-y-5 max-w-[1600px]">
       {/* Welcome bar */}
@@ -143,7 +150,14 @@ export function DashboardPage() {
 
       {tab === 'today' && (
         <>
-          <ActivityCalendar />
+          <ActivityCalendar
+            filters={calendarFilters.filters}
+            activeFilterCount={calendarFilters.activeCount}
+            onToggleType={calendarFilters.toggleType}
+            onToggleStatus={calendarFilters.toggleStatus}
+            onSetOwner={calendarFilters.setOwner}
+            onClearFilters={calendarFilters.clear}
+          />
           <MeetingFormModal />
           <TaskFormModal />
         </>

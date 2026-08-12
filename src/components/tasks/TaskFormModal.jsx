@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, FileText, Calendar, User, Link2, Tag } from 'lucide-react'
 import { useTasksStore }                             from '../../stores/tasksStore.js'
 import { useTask, useCreateTask, useUpdateTask }     from '../../hooks/useTasks.js'
@@ -98,12 +99,22 @@ export function TaskFormModal() {
     setErrors((err) => { const next = { ...err }; delete next[field]; return next })
   }
 
+  // Lock the page behind the modal. Without this the calendar scrolls under an
+  // open dialog on every wheel gesture, which reads as the modal drifting.
+  useEffect(() => {
+    if (!isOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [isOpen])
+
   if (!isOpen) return null
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4
+                    overflow-y-auto">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={close} />
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md" onClick={close} />
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-card-lg w-full max-w-[560px]
@@ -251,7 +262,13 @@ export function TaskFormModal() {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    // Rendered into <body>, not into the page tree. A modal nested inside
+    // the scrollable <main> is at the mercy of every ancestor: one transform,
+    // filter or contain anywhere above it turns `position: fixed` into
+    // `absolute` and the backdrop stops covering the viewport. A portal makes
+    // that class of bug impossible rather than fixing one instance of it.
+    document.body,
   )
 }
 
