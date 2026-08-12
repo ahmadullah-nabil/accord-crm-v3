@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   X, Calendar, Clock, MapPin, Users, Link2,
-  FileText, Tag, Plus, Trash2,
+  FileText, Tag, Plus, Trash2, Mail,
 } from 'lucide-react'
 import { useMeetingsStore }                               from '../../stores/meetingsStore.js'
 import { useMeeting, useCreateMeeting, useUpdateMeeting } from '../../hooks/useMeetings.js'
@@ -10,6 +10,27 @@ import {
   RELATED_TYPES, LOCATION_TYPES, DURATION_OPTIONS,
 } from '../../lib/meetingsData.js'
 import { useAssignableMembers } from '../../hooks/useTeam.js'
+import { useAuthStore }        from '../../stores/authStore.js'
+import { AttendeePicker }      from './AttendeePicker.jsx'
+
+// A short list beats a 400-entry dropdown: these cover the zones this CRM
+// actually schedules across today. `Intl.supportedValuesOf('timeZone')` is the
+// full set if that ever stops being true.
+const TIMEZONES = [
+  { value: 'Asia/Dhaka',       label: 'Dhaka (GMT+6)' },
+  { value: 'Asia/Kolkata',     label: 'Kolkata / Delhi (GMT+5:30)' },
+  { value: 'Asia/Karachi',     label: 'Karachi (GMT+5)' },
+  { value: 'Asia/Dubai',       label: 'Dubai (GMT+4)' },
+  { value: 'Asia/Singapore',   label: 'Singapore (GMT+8)' },
+  { value: 'Asia/Tokyo',       label: 'Tokyo (GMT+9)' },
+  { value: 'Europe/London',    label: 'London (GMT+0/+1)' },
+  { value: 'Europe/Berlin',    label: 'Berlin / Paris (GMT+1/+2)' },
+  { value: 'America/New_York', label: 'New York (GMT-5/-4)' },
+  { value: 'America/Chicago',  label: 'Chicago (GMT-6/-5)' },
+  { value: 'America/Los_Angeles', label: 'Los Angeles (GMT-8/-7)' },
+  { value: 'Australia/Sydney', label: 'Sydney (GMT+10/+11)' },
+  { value: 'UTC',              label: 'UTC' },
+]
 
 const EMPTY = {
   title:        '',
@@ -28,6 +49,19 @@ const EMPTY = {
   relatedLabel: '',
   notes:        '',
   tags:         '',
+
+  // ── Calendar sync (020) ─────────────────────────────────────────────────
+  // Who receives an external calendar invitation. Separate from
+  // `participants`, which is internal tracking and is never mailed.
+  attendees:    [],
+  // IANA zone, never an offset — offsets are wrong twice a year anywhere with
+  // DST. Providers are told the local time AND this zone, and convert per
+  // attendee themselves.
+  timezone:     'Asia/Dhaka',
+  // Set from the signed-in user on save. calendar-sync needs an auth user id to
+  // know whose connected calendar hosts the event; `organizer` is a display
+  // name and cannot answer that.
+  organizerId:  null,
 }
 
 export function MeetingFormModal() {
@@ -46,6 +80,8 @@ export function MeetingFormModal() {
   const createMutation = useCreateMeeting()
   const updateMutation = useUpdateMeeting()
 
+  const currentUserId = useAuthStore((st) => st.user?.id) ?? null
+
   const [form, setForm]           = useState(EMPTY)
   const [errors, setErrors]       = useState({})
   const [participantInput, setParticipantInput] = useState('')
@@ -58,6 +94,9 @@ export function MeetingFormModal() {
           tags: (existingMeeting.tags || []).join(', '),
           participants: existingMeeting.participants || [],
           durationMins: existingMeeting.durationMins ?? 60,
+          attendees:    existingMeeting.attendees   || [],
+          timezone:     existingMeeting.timezone    || 'Asia/Dhaka',
+          organizerId:  existingMeeting.organizerId ?? null,
         })
       } else {
         // For new meetings: apply any prefill data supplied by the caller
@@ -89,6 +128,13 @@ export function MeetingFormModal() {
     const payload = {
       ...form,
       durationMins: Number(form.durationMins),
+      // Claim the meeting for the signed-in user if nobody holds it yet.
+      // Existing rows keep their organiser, so editing someone else's meeting
+      // does not quietly hand it over — and every pre-020 meeting becomes
+      // syncable simply by being saved once.
+      organizerId: form.organizerId ?? currentUserId ?? null,
+      timezone:    form.timezone || 'Asia/Dhaka',
+      attendees:   Array.isArray(form.attendees) ? form.attendees : [],
       tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
       relatedType:  form.relatedType === 'None' ? 'None' : form.relatedType,
       relatedId:    form.relatedType === 'None' ? '' : form.relatedId,
@@ -272,6 +318,53 @@ export function MeetingFormModal() {
                   <Plus size={14} />
                 </button>
               </div>
+              <p className="mt-1.5 text-xs text-slate-500">
+                Internal tracking only — participants are not emailed.
+              </p>
+            </div>
+
+            {/* ── Calendar invitations ────────────────────────────────────────
+                Kept visually distinct from Participants above because the two
+                look alike and behave nothing alike: one is a list, the other
+                puts a message in someone's inbox from the organiser's own
+                address. */}
+            <div className="rounded-lg border border-slate-200 p-3 space-y-3">
+              <div>
+                <label className="label-base flex items-center gap-1.5">
+                  <Mail size={13} /> Calendar invitations
+                </label>
+                <p className="text-xs text-slate-500">
+                  These people receive an email invitation when this meeting is
+                  added to your calendar.
+                </p>
+              </div>
+
+              <AttendeePicker
+                attendees={form.attendees}
+                onChange={(next) => setForm((f) => ({ ...f, attendees: next }))}
+                disabled={isPending}
+              />
+
+              {/* Time zone sits here rather than beside the time field because
+                  it only matters once someone outside it is invited. Storing an
+                  IANA name — never an offset — is what keeps 3pm Dhaka meaning
+                  3pm Dhaka across a DST rule change. */}
+              <Field label="Time zone" icon={Clock}>
+                <select
+                  className="input-base"
+                  value={form.timezone}
+                  onChange={setField('timezone')}
+                >
+                  {TIMEZONES.map((tz) => (
+                    <option key={tz.value} value={tz.value}>{tz.label}</option>
+                  ))}
+                </select>
+              </Field>
+
+              <p className="text-xs text-slate-500">
+                Saving does not send anything. Use “Add to calendar” on the
+                meeting afterwards to create the event and invite these people.
+              </p>
             </div>
 
             {/* Related entity */}

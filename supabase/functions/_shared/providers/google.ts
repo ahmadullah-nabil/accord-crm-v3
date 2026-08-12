@@ -23,6 +23,8 @@
 // calendars, which the CRM does not need.
 
 import type {
+  CalendarEventInput,
+  CalendarEventResult,
   AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderAuth,
   ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
 } from '../types.ts'
@@ -199,4 +201,127 @@ export const googleAdapter: ProviderAdapter = {
       return false
     }
   },
+
+  // ── Calendar ────────────────────────────────────────────────────────────────
+  //
+  // Scope is calendar.events, not the broader `calendar`: it permits managing
+  // events but NOT creating, deleting or reading the list of the user's
+  // calendars. Events go to 'primary'.
+
+  async createEvent(auth, input): Promise<CalendarEventResult> {
+    // sendUpdates=all mails every attendee. 'none' would create the event
+    // silently, which for a client meeting is indistinguishable from forgetting
+    // to invite them.
+    const notify = input.sendNotifications === false ? 'none' : 'all'
+    const params = new URLSearchParams({ sendUpdates: notify })
+
+    // conferenceDataVersion=1 is REQUIRED for Google to honour the Meet
+    // request. Without it the createRequest is silently ignored — no error, no
+    // link, and the meeting goes out with no way to join.
+    if (input.addConferencing) params.set('conferenceDataVersion', '1')
+
+    const body = googleEventBody(input)
+    const res = await googleFetch(
+      auth,
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+      { method: 'POST', body: JSON.stringify(body) },
+    )
+    return googleEventResult(res)
+  },
+
+  async updateEvent(auth, externalEventId, input): Promise<CalendarEventResult> {
+    const notify = input.sendNotifications === false ? 'none' : 'all'
+    const params = new URLSearchParams({ sendUpdates: notify })
+    if (input.addConferencing) params.set('conferenceDataVersion', '1')
+
+    // PUT, not DELETE-then-POST. Recreating would issue fresh invitations and
+    // discard every RSVP already given.
+    const res = await googleFetch(
+      auth,
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(externalEventId)}?${params}`,
+      { method: 'PUT', body: JSON.stringify(googleEventBody(input)) },
+    )
+    return googleEventResult(res)
+  },
+
+  async cancelEvent(auth, externalEventId): Promise<boolean> {
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(externalEventId)}?sendUpdates=all`,
+      { method: 'DELETE', headers: { Authorization: `${auth.tokenType} ${auth.accessToken}` } },
+    )
+    // 410 Gone / 404 Not Found: already deleted. The goal is "not on the
+    // calendar", which is satisfied. Reporting failure here would strand the
+    // local row in 'failed' with nothing left to retry.
+    if (res.ok || res.status === 404 || res.status === 410) return true
+    console.error('[google] cancelEvent failed:', res.status, (await res.text()).slice(0, 300))
+    return false
+  },
+}
+
+// ── Calendar helpers ──────────────────────────────────────────────────────────
+
+function googleEventBody(input: CalendarEventInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    summary:     input.title,
+    description: input.description ?? '',
+    location:    input.location ?? '',
+    // dateTime WITHOUT an offset plus an explicit timeZone. Sending a UTC
+    // instant instead would render correctly today and wrongly the moment the
+    // zone's DST rules change.
+    start: { dateTime: input.start, timeZone: input.timezone },
+    end:   { dateTime: input.end,   timeZone: input.timezone },
+    attendees: input.attendees.map((a) => ({
+      email:       a.email,
+      displayName: a.name || undefined,
+    })),
+  }
+
+  if (input.addConferencing) {
+    body.conferenceData = {
+      createRequest: {
+        // Must be unique per request. A repeated id makes Google return the
+        // PREVIOUS conference rather than minting a new one.
+        requestId: crypto.randomUUID(),
+        conferenceSolutionKey: { type: 'hangoutsMeet' },
+      },
+    }
+  }
+  return body
+}
+
+async function googleFetch(
+  auth: { accessToken: string; tokenType: string },
+  url: string,
+  init: RequestInit,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `${auth.tokenType} ${auth.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    console.error('[google] calendar call failed:', res.status, text.slice(0, 400))
+    throw new IntegrationError(
+      'calendar_failed',
+      `Google Calendar rejected the request (${res.status}).`,
+      // 5xx and 429 are worth retrying; 4xx means the caller must change
+      // something and retrying would fail identically forever.
+      res.status >= 500 || res.status === 429 ? 502 : 400,
+    )
+  }
+  return JSON.parse(text)
+}
+
+function googleEventResult(res: Record<string, unknown>): CalendarEventResult {
+  const conf = res.conferenceData as { entryPoints?: { entryPointType?: string; uri?: string }[] } | undefined
+  const video = conf?.entryPoints?.find((e) => e.entryPointType === 'video')
+  return {
+    externalEventId: String(res.id ?? ''),
+    etag:            (res.etag as string) ?? null,
+    meetingUrl:      video?.uri ?? (res.hangoutLink as string) ?? null,
+    htmlLink:        (res.htmlLink as string) ?? null,
+  }
 }

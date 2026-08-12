@@ -21,6 +21,8 @@
 // issues NO refresh token — the single most common Zoho integration failure.
 
 import type {
+  CalendarEventInput,
+  CalendarEventResult,
   AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderAuth,
   ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
 } from '../types.ts'
@@ -95,7 +97,19 @@ const CAPABILITY_SCOPES: Record<Capability, string[]> = {
   //
   // AaaServer.profile.READ grants name/email/ZUID only. It confers NO access to
   // mail, calendar data, or any other Zoho service.
-  calendar: ['ZohoCalendar.event.ALL', 'AaaServer.profile.READ'],
+  //
+  // ZohoCalendar.calendar.READ is separate from .event.ALL and both are needed.
+  // Zoho scopes an EVENT differently from the CALENDAR that holds it, and its
+  // API offers no 'primary' alias — every event call is addressed to a calendar
+  // UID that must be looked up via GET /api/v1/calendars first. With only the
+  // event scope that lookup returns 401 and no event can ever be created.
+  // READ, not ALL: the CRM reads the calendar list to find the UID and never
+  // creates, renames or deletes a calendar.
+  calendar: [
+    'ZohoCalendar.calendar.READ',
+    'ZohoCalendar.event.ALL',
+    'AaaServer.profile.READ',
+  ],
 }
 
 export const zohoAdapter: ProviderAdapter = {
@@ -389,6 +403,226 @@ export const zohoAdapter: ProviderAdapter = {
       return false
     }
   },
+
+  // ── Calendar ────────────────────────────────────────────────────────────────
+  //
+  // ⚠️ THE LEAST VERIFIED CODE IN THIS FILE. Zoho Calendar's API is the most
+  // thinly documented of the three providers and its shape differs sharply from
+  // Google's and Graph's:
+  //
+  //   • events hang off a CALENDAR UID, which must be looked up first — there
+  //     is no 'primary' alias
+  //   • the payload goes in an `eventdata` parameter as a JSON *string*, not as
+  //     the request body
+  //   • times are compact (yyyyMMddTHHmmss±hhmm), not ISO-8601
+  //   • the host is calendar.zoho.<tld>, NOT zohoapis.<tld> — the same
+  //     distinction that broke Zoho Mail (see fetchIdentity above)
+  //
+  // Every call therefore logs status and body. If the first live event fails,
+  // the log says exactly which call and why, rather than costing several
+  // deploy-and-retry cycles.
+
+  async createEvent(auth, input): Promise<CalendarEventResult> {
+    const host = zohoCalendarHost(auth.apiDomain)
+    const uid  = await resolveCalendarUid(auth, host)
+
+    const res = await zohoCalendarFetch(
+      auth,
+      `${host}/api/v1/calendars/${encodeURIComponent(uid)}/events`,
+      'POST',
+      { eventdata: JSON.stringify(zohoEventData(input)) },
+    )
+    return zohoEventResult(res, uid)
+  },
+
+  async updateEvent(auth, externalEventId, input): Promise<CalendarEventResult> {
+    const host = zohoCalendarHost(auth.apiDomain)
+    // The stored id is `calendarUid:eventUid` — Zoho needs both, and the
+    // calendar a given event lives in is not otherwise recoverable.
+    const [calUid, eventUid] = splitZohoEventId(externalEventId)
+    const uid = calUid || await resolveCalendarUid(auth, host)
+
+    const res = await zohoCalendarFetch(
+      auth,
+      `${host}/api/v1/calendars/${encodeURIComponent(uid)}/events/${encodeURIComponent(eventUid)}`,
+      'PUT',
+      { eventdata: JSON.stringify(zohoEventData(input)) },
+    )
+    return zohoEventResult(res, uid)
+  },
+
+  async cancelEvent(auth, externalEventId): Promise<boolean> {
+    const host = zohoCalendarHost(auth.apiDomain)
+    const [calUid, eventUid] = splitZohoEventId(externalEventId)
+    if (!eventUid) return false
+
+    const uid = calUid || await resolveCalendarUid(auth, host)
+    const url = `${host}/api/v1/calendars/${encodeURIComponent(uid)}/events/${encodeURIComponent(eventUid)}`
+
+    try {
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: `Zoho-oauthtoken ${auth.accessToken}` },
+      })
+      const body = await res.text()
+      console.log(`[zoho] cancelEvent ${url} → ${res.status} ${body.slice(0, 200)}`)
+      // Already gone is success: the event is off the calendar either way.
+      return res.ok || res.status === 404
+    } catch (err) {
+      console.error('[zoho] cancelEvent threw:', err)
+      return false
+    }
+  },
+}
+
+// ── Calendar helpers ──────────────────────────────────────────────────────────
+
+/** calendar.zoho.<tld>, derived from the DC in api_domain. */
+function zohoCalendarHost(apiDomain: string | null | undefined): string {
+  const accounts = zohoAccountsFromApiDomain(apiDomain ?? null)
+  return accounts.replace('//accounts.', '//calendar.')
+}
+
+/** Stored as `calendarUid:eventUid`. */
+function splitZohoEventId(id: string): [string, string] {
+  const i = id.indexOf(':')
+  return i === -1 ? ['', id] : [id.slice(0, i), id.slice(i + 1)]
+}
+
+// One lookup per isolate. The default calendar does not change, and paying a
+// round trip before every event would double the latency of creating one.
+const calendarUidCache = new Map<string, { uid: string; at: number }>()
+const CAL_UID_TTL_MS = 10 * 60 * 1000
+
+async function resolveCalendarUid(
+  auth: { accessToken: string; apiDomain?: string | null },
+  host: string,
+): Promise<string> {
+  const key = `${host}:${auth.accessToken.slice(-16)}`
+  const hit = calendarUidCache.get(key)
+  if (hit && Date.now() - hit.at < CAL_UID_TTL_MS) return hit.uid
+
+  const url = `${host}/api/v1/calendars`
+  const res = await fetch(url, {
+    headers: { Authorization: `Zoho-oauthtoken ${auth.accessToken}`, Accept: 'application/json' },
+  })
+  const text = await res.text()
+  console.log(`[zoho] calendars ${url} → ${res.status} ${text.slice(0, 400)}`)
+
+  if (!res.ok) {
+    throw new IntegrationError(
+      'calendar_failed',
+      `Could not read your Zoho calendars (${res.status}).`,
+      res.status >= 500 ? 502 : 400,
+    )
+  }
+
+  let payload: { calendars?: { uid?: string; isdefault?: boolean; default?: boolean }[] }
+  try { payload = JSON.parse(text) } catch {
+    throw new IntegrationError('calendar_failed', 'Zoho returned an unreadable calendar list.', 502)
+  }
+
+  const list = payload.calendars ?? []
+  // Prefer the flagged default; fall back to the first. Writing to the wrong
+  // calendar is recoverable and visible — failing outright is not.
+  const chosen = list.find((c) => c.isdefault || c.default) ?? list[0]
+  if (!chosen?.uid) {
+    throw new IntegrationError(
+      'calendar_failed',
+      'No writable Zoho calendar was found for this account.',
+      400,
+    )
+  }
+
+  calendarUidCache.set(key, { uid: chosen.uid, at: Date.now() })
+  return chosen.uid
+}
+
+/**
+ * Zoho wants yyyyMMddTHHmmss±hhmm — a local wall-clock time with the zone's
+ * offset attached, not a UTC instant.
+ *
+ * The offset must be computed FOR THAT DATE rather than for today: a meeting
+ * booked across a DST boundary in a zone that observes one would otherwise be
+ * an hour out. Asia/Dhaka has no DST, so this is currently belt-and-braces —
+ * but it stops being so the first time an attendee books in a zone that does.
+ */
+function toZohoDateTime(local: string, timeZone: string): string {
+  const compact = local.replace(/[-:]/g, '').replace(/\.\d+$/, '')
+  const asUtc = new Date(`${local}Z`)
+
+  let offset = '+0000'
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longOffset' })
+      .formatToParts(asUtc)
+    const name = parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT+00:00'
+    const m = name.match(/GMT([+-])(\d{2}):(\d{2})/)
+    if (m) offset = `${m[1]}${m[2]}${m[3]}`
+  } catch {
+    console.warn(`[zoho] unknown timezone ${timeZone}; sending +0000`)
+  }
+  return `${compact}${offset}`
+}
+
+function zohoEventData(input: CalendarEventInput): Record<string, unknown> {
+  return {
+    title:       input.title,
+    description: input.description ?? '',
+    location:    input.location ?? '',
+    dateandtime: {
+      timezone: input.timezone,
+      start:    toZohoDateTime(input.start, input.timezone),
+      end:      toZohoDateTime(input.end, input.timezone),
+    },
+    attendees: input.attendees.map((a) => ({ email: a.email, status: 'NEEDS-ACTION' })),
+    // Zoho has no Meet/Teams equivalent — input.addConferencing is ignored, and
+    // sentCopy-style honesty applies: the UI must not promise a join link here.
+  }
+}
+
+async function zohoCalendarFetch(
+  auth: { accessToken: string },
+  url: string,
+  method: string,
+  form: Record<string, string>,
+): Promise<Record<string, unknown>> {
+  const body = new URLSearchParams(form)
+  const res = await fetch(url, {
+    method,
+    headers: {
+      Authorization: `Zoho-oauthtoken ${auth.accessToken}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body,
+  })
+  const text = await res.text()
+  console.log(`[zoho] calendar ${method} ${url} → ${res.status} ${text.slice(0, 400)}`)
+
+  if (!res.ok) {
+    throw new IntegrationError(
+      'calendar_failed',
+      `Zoho Calendar rejected the request (${res.status}).`,
+      res.status >= 500 || res.status === 429 ? 502 : 400,
+    )
+  }
+  try { return JSON.parse(text) } catch { return {} }
+}
+
+function zohoEventResult(res: Record<string, unknown>, calendarUid: string): CalendarEventResult {
+  // Zoho nests the created event under `events`, occasionally as a bare object.
+  const events = res.events as Record<string, unknown>[] | undefined
+  const ev = Array.isArray(events) ? events[0] : (res as Record<string, unknown>)
+  const uid = String(ev?.uid ?? ev?.eventid ?? '')
+
+  return {
+    // Prefixed with the calendar uid: update and cancel both need it, and Zoho
+    // gives no way to find an event's calendar from its id alone.
+    externalEventId: uid ? `${calendarUid}:${uid}` : '',
+    etag:            (ev?.etag as string) ?? null,
+    meetingUrl:      null,
+    htmlLink:        null,
+  }
 }
 
 /** Map a stored api_domain back to the matching accounts host in the same DC. */

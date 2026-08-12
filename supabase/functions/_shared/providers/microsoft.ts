@@ -14,6 +14,8 @@
 // `User.Read` is the minimum needed to label the connected account.
 
 import type {
+  CalendarEventInput,
+  CalendarEventResult,
   AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderAuth,
   ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
 } from '../types.ts'
@@ -204,4 +206,120 @@ export const microsoftAdapter: ProviderAdapter = {
     // We return false honestly rather than pretending revocation happened.
     return false
   },
+
+  // ── Calendar ────────────────────────────────────────────────────────────────
+  //
+  // Graph events on /me/events. Scope is Calendars.ReadWrite — Graph has no
+  // write-only calendar permission, so read access comes along unavoidably.
+  // The adapter simply never reads.
+
+  async createEvent(auth, input): Promise<CalendarEventResult> {
+    const res = await graphFetch(auth, 'https://graph.microsoft.com/v1.0/me/events', {
+      method: 'POST',
+      body: JSON.stringify(graphEventBody(input)),
+    })
+    return graphEventResult(res)
+  },
+
+  async updateEvent(auth, externalEventId, input): Promise<CalendarEventResult> {
+    // PATCH preserves the event identity, so attendees receive an update rather
+    // than a second invitation and their existing RSVPs survive.
+    const res = await graphFetch(
+      auth,
+      `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(externalEventId)}`,
+      { method: 'PATCH', body: JSON.stringify(graphEventBody(input)) },
+    )
+    return graphEventResult(res)
+  },
+
+  async cancelEvent(auth, externalEventId): Promise<boolean> {
+    // /cancel notifies attendees; a plain DELETE removes it from the
+    // organiser's calendar and leaves everyone else holding a meeting that no
+    // longer exists.
+    const res = await fetch(
+      `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(externalEventId)}/cancel`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `${auth.tokenType} ${auth.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ Comment: 'This meeting has been cancelled.' }),
+      },
+    )
+    if (res.ok || res.status === 404) return true
+
+    // /cancel is organiser-only. On someone else's event Graph refuses, and
+    // DELETE (removing it from this calendar) is the most we can honestly do.
+    if (res.status === 403) {
+      const del = await fetch(
+        `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(externalEventId)}`,
+        { method: 'DELETE', headers: { Authorization: `${auth.tokenType} ${auth.accessToken}` } },
+      )
+      return del.ok || del.status === 404
+    }
+    console.error('[microsoft] cancelEvent failed:', res.status, (await res.text()).slice(0, 300))
+    return false
+  },
+}
+
+// ── Calendar helpers ──────────────────────────────────────────────────────────
+
+function graphEventBody(input: CalendarEventInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    subject: input.title,
+    body:    { contentType: 'HTML', content: input.description ?? '' },
+    start:   { dateTime: input.start, timeZone: input.timezone },
+    end:     { dateTime: input.end,   timeZone: input.timezone },
+    location: { displayName: input.location ?? '' },
+    attendees: input.attendees.map((a) => ({
+      emailAddress: { address: a.email, name: a.name || a.email },
+      type: 'required',
+    })),
+  }
+
+  if (input.addConferencing) {
+    body.isOnlineMeeting = true
+    body.onlineMeetingProvider = 'teamsForBusiness'
+  }
+  return body
+}
+
+async function graphFetch(
+  auth: { accessToken: string; tokenType: string },
+  url: string,
+  init: RequestInit,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `${auth.tokenType} ${auth.accessToken}`,
+      'Content-Type': 'application/json',
+      // Graph accepts naive dateTime + timeZone in the body; this header only
+      // governs how it formats times back to us. Asking for UTC keeps the
+      // response predictable without affecting what was stored.
+      Prefer: 'outlook.timezone="UTC"',
+    },
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    console.error('[microsoft] calendar call failed:', res.status, text.slice(0, 400))
+    throw new IntegrationError(
+      'calendar_failed',
+      `Microsoft Graph rejected the request (${res.status}).`,
+      res.status >= 500 || res.status === 429 ? 502 : 400,
+    )
+  }
+  return JSON.parse(text)
+}
+
+function graphEventResult(res: Record<string, unknown>): CalendarEventResult {
+  const online = res.onlineMeeting as { joinUrl?: string } | undefined
+  return {
+    externalEventId: String(res.id ?? ''),
+    // Graph returns @odata.etag, not etag.
+    etag:            (res['@odata.etag'] as string) ?? null,
+    meetingUrl:      online?.joinUrl ?? null,
+    htmlLink:        (res.webLink as string) ?? null,
+  }
 }

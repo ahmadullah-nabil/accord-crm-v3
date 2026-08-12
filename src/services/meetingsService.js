@@ -48,6 +48,22 @@ function toApp(row) {
     tags:          Array.isArray(row.tags) ? row.tags : [],
     createdAt:     row.created_at     ?? '',
     createdBy:     row.created_by     ?? '',
+
+    // ── Calendar sync (020) ───────────────────────────────────────────────
+    // organizerId is the auth user whose connected calendar hosts the event.
+    // Distinct from `organizer`, which is a display name — the two answer
+    // different questions and both are needed.
+    organizerId:   row.organizer_id   ?? null,
+    // [{email,name,source}]. ONLY these receive an external invitation;
+    // `participants` above is internal tracking and is never mailed.
+    attendees:     Array.isArray(row.attendees) ? row.attendees : [],
+    timezone:      row.timezone       ?? 'Asia/Dhaka',
+    provider:      row.provider       ?? null,
+    externalEventId: row.external_event_id ?? null,
+    syncStatus:    row.sync_status    ?? 'not_synced',
+    syncError:     row.sync_error     ?? null,
+    lastSyncedAt:  row.last_synced_at ?? null,
+    meetingUrl:    row.meeting_url    ?? null,
   }
 }
 
@@ -83,6 +99,28 @@ function toDb(payload) {
 
   if (payload.relatedLabel !== undefined)
     row.related_label = payload.relatedLabel ?? ''
+
+  if (payload.organizerId !== undefined)
+    row.organizer_id = payload.organizerId || null
+  if (payload.timezone !== undefined)
+    row.timezone = payload.timezone || 'Asia/Dhaka'
+  if (payload.attendees !== undefined)
+    // Normalised here so a stray blank row from the form cannot trip the
+    // shape constraint, which would fail the whole save with a Postgres error
+    // the user cannot act on.
+    row.attendees = (Array.isArray(payload.attendees) ? payload.attendees : [])
+      .filter((a) => a && typeof a.email === 'string' && a.email.trim())
+      .map((a) => ({
+        email:  a.email.trim().toLowerCase(),
+        name:   (a.name ?? '').trim(),
+        source: a.source ?? 'external',
+      }))
+
+  // provider / external_event_id / sync_status / sync_error / last_synced_at /
+  // meeting_url are DELIBERATELY not writable from the client. They record what
+  // a provider actually did, and calendar-sync owns them. Letting the browser
+  // set sync_status='synced' would put a green badge over an event that was
+  // never created.
 
   if (payload.participants !== undefined)
     row.participants = Array.isArray(payload.participants) ? payload.participants : []

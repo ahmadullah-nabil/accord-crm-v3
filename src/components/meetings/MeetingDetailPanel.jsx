@@ -15,6 +15,7 @@ import { Avatar }                             from '../ui/Avatar.jsx'
 import { Skeleton, SkeletonText }             from '../ui/Skeleton.jsx'
 import { TimelinePanel }                      from '../timeline/TimelinePanel.jsx'
 import { useRoleByName }                      from '../../hooks/useTeam.js'
+import { CalendarSyncCard } from './CalendarSyncCard.jsx'
 
 export function MeetingDetailPanel() {
   const { detailPanelOpen, closeDetail, selectedMeetingId, openEditModal } = useMeetingsStore()
@@ -246,6 +247,11 @@ function MeetingPanelContent({meeting,organizerRole,linkedTasks,tasksLoading,onC
             </div>
           </Section>
         )}
+
+        {/* External calendar. Placed above Related because it is an action the
+            organiser takes, not a fact about the meeting — and because a failed
+            sync needs to be seen, not scrolled to. */}
+        <CalendarSyncCard meeting={meeting} />
 
         {/* Related entity */}
         {meeting.relatedType && meeting.relatedType !== 'None' && meeting.relatedId && (

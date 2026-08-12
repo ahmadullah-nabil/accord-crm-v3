@@ -77,6 +77,50 @@ export interface EmailAttachment {
  * html-only mail, which is the single easiest way to land in a spam folder.
  * send-email derives the text part automatically, so no caller has to write it.
  */
+/** One invitation recipient. `source` records where the address came from so
+ *  the UI can distinguish a CRM contact from a hand-typed address. */
+export interface CalendarAttendee {
+  email: string
+  name?: string
+  source?: 'internal' | 'external' | 'contact'
+}
+
+export interface CalendarEventInput {
+  title: string
+  description?: string
+  location?: string
+
+  /**
+   * Local wall-clock start/end, paired with an IANA `timezone`.
+   *
+   * NOT a UTC instant. Providers store the zone alongside the time so that an
+   * event booked for 3pm Dhaka stays 3pm Dhaka if the zone's rules change, and
+   * so each attendee sees it converted into their own zone. Collapsing to UTC
+   * here would throw away the information needed to do either.
+   */
+  start: string          // 'YYYY-MM-DDTHH:mm:ss'
+  end: string            // 'YYYY-MM-DDTHH:mm:ss'
+  timezone: string       // IANA, e.g. 'Asia/Dhaka' — never an offset
+
+  attendees: CalendarAttendee[]
+
+  /** Ask the provider to attach a Meet/Teams link. Zoho has no equivalent. */
+  addConferencing?: boolean
+
+  /** False suppresses attendee email. Used when only internal fields changed. */
+  sendNotifications?: boolean
+}
+
+export interface CalendarEventResult {
+  externalEventId: string
+  /** Provider version marker, stored for later inbound sync. */
+  etag?: string | null
+  /** Meet/Teams join URL, when the provider created one. */
+  meetingUrl?: string | null
+  /** Provider's own web link to the event. */
+  htmlLink?: string | null
+}
+
 export interface SendEmailInput {
   from: EmailAddress
   to: EmailAddress[]
@@ -185,6 +229,46 @@ export interface ProviderAdapter {
    * Only present on adapters whose `capabilities` include 'email'.
    */
   sendEmail(auth: ProviderAuth, input: SendEmailInput): Promise<SendEmailResult>
+
+  // ── Calendar (Phase 2) ────────────────────────────────────────────────────
+  //
+  // One-way push only: the CRM is the source of truth and these three verbs
+  // are the whole surface. There is deliberately no read/list — RSVP and
+  // inbound sync need webhook channels, a renewal cron and delta tokens, and
+  // are out of scope until users ask for them.
+  //
+  // Implementations MUST throw IntegrationError('calendar_failed', …) with
+  // status 502 for retryable provider faults and 400 for caller-fixable ones,
+  // matching sendEmail's contract so Phase 3 retry logic treats both alike.
+  //
+  // Only present on adapters whose `capabilities` include 'calendar'.
+
+  /** Create the event and invite `attendees`. Returns the provider's id. */
+  createEvent(auth: ProviderAuth, input: CalendarEventInput): Promise<CalendarEventResult>
+
+  /**
+   * Update an existing event in place.
+   *
+   * MUST update rather than delete-and-recreate: recreating issues fresh
+   * invitations, so every attendee is re-mailed and any RSVP they already gave
+   * is discarded. A time change should reach them as an update, not as a second
+   * meeting.
+   */
+  updateEvent(
+    auth: ProviderAuth,
+    externalEventId: string,
+    input: CalendarEventInput,
+  ): Promise<CalendarEventResult>
+
+  /**
+   * Cancel the event, notifying attendees.
+   *
+   * Returns true when the event is gone at the provider — INCLUDING when it was
+   * already absent (404). A cancel whose target no longer exists has achieved
+   * its purpose, and treating that as failure would strand the local row in
+   * 'failed' forever with nothing to retry.
+   */
+  cancelEvent(auth: ProviderAuth, externalEventId: string): Promise<boolean>
 }
 
 /** Raised with a stable machine-readable code so the UI can react precisely
@@ -203,6 +287,7 @@ export class IntegrationError extends Error {
       | 'admin_consent_required' // Microsoft tenant policy
       | 'no_email_account'       // no connected account can send mail (Phase 1)
       | 'send_failed'            // the provider rejected the message (Phase 1)
+      | 'calendar_failed'        // provider rejected an event create/update/cancel
       | 'invalid_recipient'      // a recipient address is malformed (Phase 1)
       | 'provider_error'
       | 'unauthorized'

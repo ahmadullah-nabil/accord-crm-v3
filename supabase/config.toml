@@ -32,6 +32,14 @@ verify_jwt = true
 # connection by guessing an id.
 verify_jwt = true
 
+[functions.calendar-sync]
+# Phase 2. Same reasoning as send-email, and it matters more here: this function
+# sends calendar INVITATIONS from the organiser's identity. The JWT decides who
+# the organiser is, and the function additionally re-checks that the caller owns
+# the meeting — 005 grants every authenticated user FOR ALL on meetings, so the
+# row itself cannot be trusted to say who may act on it.
+verify_jwt = true
+
 # integration-token-check has been REMOVED. It was a temporary Phase 0
 # diagnostic that existed to prove tokens.ts refreshed correctly against a live
 # provider. send-email now exercises that path on every send, which is a better
