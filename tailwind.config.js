@@ -83,9 +83,19 @@ export default {
         'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
       },
       keyframes: {
+        // NO TRANSFORM HERE, DELIBERATELY.
+        //
+        // This animation sits on the layout's page wrapper. A transformed
+        // element becomes the containing block for every position:fixed
+        // descendant, so a modal using `fixed inset-0` would cover only the
+        // content area and leave the sidebar and header undimmed — the overlay
+        // stops being full-screen and looks broken.
+        //
+        // Opacity alone produces the same perceived fade without that side
+        // effect. The 4px rise is not worth a broken overlay.
         fadeIn: {
-          '0%':   { opacity: '0', transform: 'translateY(4px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+          '0%':   { opacity: '0' },
+          '100%': { opacity: '1' },
         },
         slideIn: {
           '0%':   { opacity: '0', transform: 'translateX(-8px)' },

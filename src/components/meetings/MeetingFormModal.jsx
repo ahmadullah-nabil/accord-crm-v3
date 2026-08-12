@@ -174,9 +174,9 @@ export function MeetingFormModal() {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={close} />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={close} />
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-card-lg w-full max-w-[600px]

@@ -33,6 +33,9 @@ function toApp(row) {
     description:  row.description  ?? '',
     status:       row.status       ?? 'Todo',
     priority:     row.priority     ?? 'Medium',
+    // 021. Calendar activity type. Existing rows default to 'Task' because they
+    // predate typing, not because anyone classified them.
+    type:         row.type         ?? 'Task',
     dueDate:      row.due_date     ?? '',
     assignee:     row.assignee     ?? '',
     relatedType:  row.related_type  ?? 'None',
@@ -52,6 +55,7 @@ function toDb(payload) {
   if (payload.title        !== undefined) row.title        = payload.title
   if (payload.description  !== undefined) row.description  = payload.description
   if (payload.priority     !== undefined) row.priority     = payload.priority
+  if (payload.type         !== undefined) row.type         = payload.type || 'Task'
   if (payload.assignee     !== undefined) row.assignee     = payload.assignee
   if (payload.dueDate      !== undefined) row.due_date     = payload.dueDate || null
   if (payload.relatedType  !== undefined) row.related_type  = payload.relatedType ?? 'None'

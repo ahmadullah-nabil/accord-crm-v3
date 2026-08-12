@@ -243,6 +243,16 @@ export async function deleteTask(id) {
 // ── Domain constants ──────────────────────────────────────────────────────────
 
 export const TASK_STATUSES   = ['Todo', 'In Progress', 'Completed', 'Overdue']
+
+// 021. What KIND of work this is, for the Dashboard calendar's type filter.
+// Follow-up, Call and Deadline previously had nowhere to live: Follow-up
+// existed only as a meeting type, Call only as a meeting location ('Phone
+// Call'), and Deadline not at all.
+//
+// NOTE on TASK_STATUSES above: 'Overdue' does not belong there. It is derived
+// (due_date < today AND not Completed), not chosen — stored, it goes stale the
+// moment a date passes. The calendar computes it; new code should not write it.
+export const TASK_TYPES      = ['Task', 'Follow-up', 'Call', 'Deadline']
 export const TASK_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 // Derived from the central team registry in lib/users.js
 export const TASK_ASSIGNEES  = _TASK_MEMBER_NAMES

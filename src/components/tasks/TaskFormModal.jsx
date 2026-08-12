@@ -3,7 +3,7 @@ import { X, FileText, Calendar, User, Link2, Tag } from 'lucide-react'
 import { useTasksStore }                             from '../../stores/tasksStore.js'
 import { useTask, useCreateTask, useUpdateTask }     from '../../hooks/useTasks.js'
 import {
-  TASK_STATUSES, TASK_PRIORITIES, RELATED_TYPES,
+  TASK_STATUSES, TASK_PRIORITIES, TASK_TYPES, RELATED_TYPES,
 } from '../../lib/tasksData.js'
 import { useAssignableMembers } from '../../hooks/useTeam.js'
 
@@ -12,6 +12,10 @@ const EMPTY = {
   description:  '',
   status:       'Todo',
   priority:     'Medium',
+  // 021. Drives the Dashboard calendar's type filter. 'Task' is the neutral
+  // default — a Call or Deadline is a deliberate choice, not something to
+  // guess from the title.
+  type:         'Task',
   dueDate:      '',
   assignee:     '',
   relatedType:  'None',
@@ -97,9 +101,9 @@ export function TaskFormModal() {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={close} />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={close} />
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-card-lg w-full max-w-[560px]
@@ -143,8 +147,13 @@ export function TaskFormModal() {
               />
             </Field>
 
-            {/* Status + Priority */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Type + Status + Priority */}
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Type">
+                <select className="input-base" value={form.type} onChange={setField('type')}>
+                  {TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </Field>
               <Field label="Status">
                 <select className="input-base" value={form.status} onChange={setField('status')}>
                   {TASK_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
