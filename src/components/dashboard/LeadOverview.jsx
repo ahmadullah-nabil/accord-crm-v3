@@ -97,8 +97,12 @@ export function LeadOverview({ owner = 'all', onSetOwner = () => {} }) {
 
   return (
     <div className="card p-4">
-      {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+      {/* ── Header ──────────────────────────────────────────────────────────
+          Stacks below sm. `flex-wrap` alone dropped the controls onto a second
+          line but left them bunched at the left under a truncated subtitle;
+          stacking deliberately and spreading them full-width reads as a layout
+          rather than as an overflow. */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center
                           ring-1 ring-blue-200 shrink-0">
@@ -112,7 +116,7 @@ export function LeadOverview({ owner = 'all', onSetOwner = () => {} }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
           <FilterPopover
             label="User"
             summary={owner === 'all' ? '' : owner}
