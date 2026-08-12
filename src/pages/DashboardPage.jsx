@@ -59,12 +59,35 @@ function fmtKpiValue(raw, format) {
 export function DashboardPage() {
   const user = useAuthStore((s) => s.user)
 
-  const kpi        = useDashboardKpi()
-  const revenue    = useDashboardRevenue()
-  const pipeline   = useDashboardPipeline()
-  const performers = useDashboardPerformers()
-  const activity   = useDashboardActivity()
-  const leads      = useDashboardLeads()
+  // Tab lives in the URL so a refresh, a back button, or a shared link all land
+  // where the user was. Component state would silently reset every one of those.
+  //
+  // Read here, ABOVE the query hooks, because they are gated on it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get('tab') === 'overview' ? 'overview' : 'today'
+
+  const setTab = (next) => {
+    const params = new URLSearchParams(searchParams)
+    if (next === 'today') params.delete('tab')   // keep the default URL clean
+    else params.set('tab', next)
+    setSearchParams(params, { replace: true })
+  }
+
+  // ── The six analytics queries belong to Overview, and only to Overview ─────
+  // The gate goes on the QUERY, not the JSX. A hook fetches wherever it is
+  // called; `{tab === 'overview' && …}` below stops the rendering and nothing
+  // else. Without this these six ran on every Dashboard visit — including the
+  // Today default, where none of the results are ever shown.
+  //
+  // One object passed to all six, so they cannot drift out of step.
+  const forOverview = { enabled: tab === 'overview' }
+
+  const kpi        = useDashboardKpi(forOverview)
+  const revenue    = useDashboardRevenue(forOverview)
+  const pipeline   = useDashboardPipeline(forOverview)
+  const performers = useDashboardPerformers(forOverview)
+  const activity   = useDashboardActivity(forOverview)
+  const leads      = useDashboardLeads(forOverview)
 
   // Build KPI cards from real query data
   const kpiCards = kpi.data
@@ -83,18 +106,6 @@ export function DashboardPage() {
     : []
 
   const anyLoading = kpi.isLoading || revenue.isLoading || pipeline.isLoading
-
-  // Tab lives in the URL so a refresh, a back button, or a shared link all land
-  // where the user was. Component state would silently reset every one of those.
-  const [searchParams, setSearchParams] = useSearchParams()
-  const tab = searchParams.get('tab') === 'overview' ? 'overview' : 'today'
-
-  const setTab = (next) => {
-    const params = new URLSearchParams(searchParams)
-    if (next === 'today') params.delete('tab')   // keep the default URL clean
-    else params.set('tab', next)
-    setSearchParams(params, { replace: true })
-  }
 
   // Filters live in the URL beside ?tab= for the same reason: a filtered month
   // survives a refresh, survives the back button after opening a task, and can
@@ -174,9 +185,10 @@ export function DashboardPage() {
         </>
       )}
 
-      {/* Everything below is the original Overview, unchanged. Kept mounted
-          only when selected so its six dashboard queries do not run on every
-          Dashboard visit just to sit behind a tab nobody opened. */}
+      {/* Everything below is the original Overview, unchanged. Rendered only
+          when selected. The six queries that feed it are stopped by the
+          `forOverview` gate at the top of the component — this condition only
+          controls the markup. Do not rely on it to prevent fetching. */}
       {tab === 'overview' && (
       <>
 
