@@ -144,7 +144,17 @@ export async function postForm(url: string, params: Record<string, string>): Pro
 
   if (!res.ok || body.error) {
     const detail = body.error_description ?? body.error ?? text.slice(0, 300)
-    throw new IntegrationError('exchange_failed', `Token endpoint rejected the request: ${detail}`, 400)
+    // body.error carries the machine code (invalid_grant, …). Pass it through
+    // separately: `detail` above prefers error_description, which loses it, and
+    // token refresh needs the code to decide permanent-vs-transient.
+    const providerError = typeof body.error === 'string' ? body.error : undefined
+    throw new IntegrationError(
+      'exchange_failed',
+      `Token endpoint rejected the request: ${detail}`,
+      // A 5xx from the token endpoint is the provider failing, not the caller.
+      res.status >= 500 ? 502 : 400,
+      providerError,
+    )
   }
   return body
 }

@@ -24,3 +24,9 @@ verify_jwt = true
 
 [functions.integration-disconnect]
 verify_jwt = true
+
+[functions.integration-token-check]
+# TEMPORARY diagnostic (Phase 0 verification). Requires a signed-in user, and
+# returns no token material. Delete this block and the function directory once
+# Phase 1's send-email exercises tokens.ts in normal use.
+verify_jwt = true

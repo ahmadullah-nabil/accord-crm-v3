@@ -102,6 +102,18 @@ export class IntegrationError extends Error {
       | 'bad_request',
     message: string,
     public status = 400,
+    /**
+     * The provider's own machine-readable error code, verbatim — e.g. Google's
+     * `invalid_grant`, Zoho's `invalid_code`, Microsoft's `AADSTS700082`.
+     *
+     * Exists because `message` prefers the provider's human-readable
+     * error_description, which discards the code. Token refresh has to tell a
+     * DEAD refresh token (permanent — the user must reconnect) from a provider
+     * hiccup (transient — retry later), and that distinction lives in the code,
+     * not the prose. Classifying on English text would break the moment a
+     * provider rewords a message.
+     */
+    public providerError?: string,
   ) {
     super(message)
     this.name = 'IntegrationError'
