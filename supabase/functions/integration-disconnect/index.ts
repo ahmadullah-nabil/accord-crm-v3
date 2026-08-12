@@ -49,11 +49,17 @@ Deno.serve(async (req) => {
     }
 
     // Credentials are read here and NOWHERE else outside this server boundary.
-    const { data: creds } = await admin
+    //
+    // Plural since 019: an account holds one credential PER CAPABILITY, so this
+    // was .maybeSingle() and would now throw outright on any account connected
+    // for both email and calendar — turning disconnect into a hard error for
+    // exactly the accounts most likely to be disconnected.
+    const { data: credRows } = await admin
       .from('integration_credentials')
-      .select('access_token, refresh_token, revoke_domain')
+      .select('capability, access_token, refresh_token, revoke_domain')
       .eq('account_id', account.id)
-      .maybeSingle()
+
+    const creds = credRows?.[0] ?? null
 
     // ── Revoke at the provider ──────────────────────────────────────────────
     let revoked = false
@@ -63,12 +69,26 @@ Deno.serve(async (req) => {
       const adapter = getAdapter(account.provider)
       // Revoking the refresh token invalidates the whole grant on Google and
       // Zoho; the access token alone would leave the grant alive.
-      const token = creds.refresh_token ?? creds.access_token
-      try {
-        revoked = await adapter.revoke(token, creds.revoke_domain ?? account.api_domain)
-      } catch (err) {
-        console.error('[integration-disconnect] revoke threw:', err)
-        revoked = false
+      //
+      // Each capability may hold a DISTINCT refresh token, so revoke every one.
+      // Deduplicated because Google's include_granted_scopes can legitimately
+      // leave the same token under both capabilities, and revoking it twice
+      // makes the second call fail and look like an error.
+      const tokens = Array.from(new Set(
+        (credRows ?? []).map((c) => c.refresh_token ?? c.access_token).filter(Boolean),
+      )) as string[]
+
+      // All must succeed. One surviving grant means the provider still believes
+      // Accord CRM has access after the user asked us to remove it.
+      revoked = tokens.length > 0
+      for (const token of tokens) {
+        try {
+          const ok = await adapter.revoke(token, creds.revoke_domain ?? account.api_domain)
+          if (!ok) revoked = false
+        } catch (err) {
+          console.error('[integration-disconnect] revoke threw:', err)
+          revoked = false
+        }
       }
       if (!revoked) {
         revokeNote = account.provider === 'microsoft'

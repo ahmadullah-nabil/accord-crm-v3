@@ -178,15 +178,21 @@ Deno.serve(async (req) => {
 
     const { error: credErr } = await admin
       .from('integration_credentials')
+      // Keyed by (account_id, capability) since 019. Before that the PK was
+      // account_id alone, so connecting calendar OVERWROTE the mail token while
+      // `capabilities` merged to claim both — the row asserted email access it
+      // could no longer exercise. Reconnecting a capability now replaces only
+      // its own token and leaves the sibling grant untouched.
       .upsert({
         account_id:    account.id,
+        capability:    stateRow.capability,
         access_token:  tokens.accessToken,
         refresh_token: tokens.refreshToken ?? null,
         token_type:    tokens.tokenType,
         expires_at:    tokens.expiresAt,
         revoke_domain: tokens.apiDomain ?? null,
         updated_at:    nowIso,
-      }, { onConflict: 'account_id' })
+      }, { onConflict: 'account_id,capability' })
 
     if (credErr) {
       // Credentials failed to save → the account cannot work. Mark it, do not

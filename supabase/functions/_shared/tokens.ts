@@ -8,7 +8,7 @@
 // This is the ONLY place a provider access token is read, refreshed or written.
 // Nothing outside `_shared/` should touch `integration_credentials` directly.
 //
-//   const token = await getValidAccessToken(accountId)
+//   const token = await getValidAccessToken(accountId, 'email')
 //   fetch(url, { headers: { Authorization: `${token.tokenType} ${token.accessToken}` } })
 //
 // Zoho is the exception to that header line — it requires `Zoho-oauthtoken`,
@@ -62,9 +62,13 @@ const PERMANENT_REFRESH_FAILURES = new Set([
   'invalid_request',
 ])
 
+export type Capability = 'email' | 'calendar'
+
 export interface ValidToken {
   accountId: string
   provider: ProviderId
+  /** Which grant this token came from. Tokens are per-capability, not per-account. */
+  capability: Capability
   accessToken: string
   tokenType: string
   /** Zoho's data-centre host. Null for Google and Microsoft. */
@@ -119,24 +123,32 @@ const inFlight = new Map<string, Promise<ValidToken>>()
  */
 export async function getValidAccessToken(
   accountId: string,
+  capability: Capability,
   opts: { forceRefresh?: boolean } = {},
 ): Promise<ValidToken> {
   if (!accountId) {
     throw new IntegrationError('bad_request', 'accountId is required.', 400)
   }
+  if (!capability) {
+    throw new IntegrationError('bad_request', 'capability is required.', 400)
+  }
 
-  const existing = inFlight.get(accountId)
+  // Keyed by BOTH, or an in-flight email refresh would be handed back to a
+  // caller asking for calendar — a different token entirely since 019.
+  const key = `${accountId}:${capability}`
+  const existing = inFlight.get(key)
   if (existing && !opts.forceRefresh) return existing
 
-  const work = resolveToken(accountId, opts).finally(() => {
-    inFlight.delete(accountId)
+  const work = resolveToken(accountId, capability, opts).finally(() => {
+    inFlight.delete(key)
   })
-  inFlight.set(accountId, work)
+  inFlight.set(key, work)
   return work
 }
 
 async function resolveToken(
   accountId: string,
+  capability: Capability,
   opts: { forceRefresh?: boolean },
 ): Promise<ValidToken> {
   const admin = adminClient()
@@ -156,17 +168,23 @@ async function resolveToken(
     .from('integration_credentials')
     .select('access_token, refresh_token, token_type, expires_at')
     .eq('account_id', accountId)
+    .eq('capability', capability)
     .maybeSingle<CredentialRow>()
 
   if (credErr) throw credErr
   if (!cred) {
-    // The account row exists but its credentials do not. Not recoverable by
-    // refreshing — there is nothing to refresh with.
-    await markReauthRequired(accountId, 'No stored credentials for this account.')
+    // Since 019 this means something specific and RECOVERABLE: the account is
+    // linked, but this capability was never consented to (or was dropped by the
+    // migration because the stored token never covered it).
+    //
+    // Deliberately NOT markReauthRequired. The account may be perfectly healthy
+    // for its other capability, and flagging the whole account would tell a user
+    // whose calendar works fine that their calendar is broken. The fix is to
+    // connect this capability, not to reconnect everything.
     throw new IntegrationError(
-      'refresh_failed',
-      'This account has no stored credentials. Please reconnect it.',
-      401,
+      'bad_request',
+      `This account is not connected for ${capability}. Connect it in Settings → Integrations.`,
+      409,
     )
   }
 
@@ -180,6 +198,7 @@ async function resolveToken(
     if (msLeft > EXPIRY_SKEW_MS) {
       return {
         accountId,
+        capability,
         provider: account.provider,
         accessToken: cred.access_token,
         tokenType: cred.token_type || 'Bearer',
@@ -190,11 +209,12 @@ async function resolveToken(
     }
   }
 
-  return refreshAndStore(account, cred)
+  return refreshAndStore(account, capability, cred)
 }
 
 async function refreshAndStore(
   account: AccountRow,
+  capability: Capability,
   cred: CredentialRow,
 ): Promise<ValidToken> {
   const admin = adminClient()
@@ -203,7 +223,7 @@ async function refreshAndStore(
     // Connect-time should have rejected this — every adapter throws
     // `no_refresh_token` when the provider issues none — but an older row or a
     // provider change could leave one here. Nothing can revive it.
-    await markReauthRequired(account.id, 'No refresh token stored for this account.')
+    await markReauthRequired(account.id, `No refresh token stored for the ${capability} grant.`)
     throw new IntegrationError(
       'refresh_failed',
       'This connection cannot be renewed automatically. Please reconnect the account.',
@@ -217,7 +237,7 @@ async function refreshAndStore(
   try {
     tokens = await adapter.refresh(cred.refresh_token, account.api_domain)
   } catch (err) {
-    return handleRefreshFailure(account, cred, err)
+    return handleRefreshFailure(account, capability, cred, err)
   }
 
   if (!tokens?.accessToken) {
@@ -245,6 +265,7 @@ async function refreshAndStore(
     .from('integration_credentials')
     .update(patch)
     .eq('account_id', account.id)
+    .eq('capability', capability)
 
   if (writeErr) {
     // The refresh succeeded but we could not store it. Returning the token is
@@ -277,6 +298,7 @@ async function refreshAndStore(
 
   return {
     accountId: account.id,
+    capability,
     provider: account.provider,
     accessToken: tokens.accessToken,
     tokenType: tokens.tokenType || 'Bearer',
@@ -296,6 +318,7 @@ async function refreshAndStore(
  */
 async function handleRefreshFailure(
   account: AccountRow,
+  capability: Capability,
   cred: CredentialRow,
   err: unknown,
 ): Promise<ValidToken> {
@@ -323,6 +346,7 @@ async function handleRefreshFailure(
       .from('integration_credentials')
       .select('access_token, refresh_token, token_type, expires_at')
       .eq('account_id', account.id)
+      .eq('capability', capability)
       .maybeSingle<CredentialRow>()
 
     if (fresh && fresh.refresh_token && fresh.refresh_token !== cred.refresh_token) {
@@ -335,6 +359,7 @@ async function handleRefreshFailure(
       if (msLeft > EXPIRY_SKEW_MS) {
         return {
           accountId: account.id,
+          capability,
           provider: account.provider,
           accessToken: fresh.access_token,
           tokenType: fresh.token_type || 'Bearer',
@@ -344,9 +369,12 @@ async function handleRefreshFailure(
         }
       }
       // The winner's token is itself already stale — retry once with it.
-      return refreshAndStore(account, fresh)
+      return refreshAndStore(account, capability, fresh)
     }
 
+    // Account-wide on purpose, even though tokens are per-capability: on Google
+    // and Zoho revoking a refresh token invalidates the whole grant, so the
+    // sibling capability is dead too even though its row still looks fine.
     await markReauthRequired(
       account.id,
       `Authorisation was revoked or expired (${providerCode || 'invalid_grant'}).`,
@@ -455,7 +483,7 @@ export async function requireAccountOwner(
  */
 export async function getTokenForCapability(
   userId: string,
-  capability: 'email' | 'calendar',
+  capability: Capability,
 ): Promise<ValidToken> {
   const admin = adminClient()
   const { data, error } = await admin
@@ -477,5 +505,5 @@ export async function getTokenForCapability(
       409,
     )
   }
-  return getValidAccessToken(account.id)
+  return getValidAccessToken(account.id, capability)
 }
