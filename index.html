@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // Pre-hydration appearance paint. Runs before React and before first
+      // paint, so the user never sees a flash of the wrong theme on reload.
+      // Reads the localStorage mirror written by src/lib/appearance.js;
+      // Supabase remains the source of truth and corrects this once loaded.
+      (function () {
+        try {
+          var d = { theme: 'light', accentColor: 'teal', fontSize: 'medium',
+                    density: 'comfortable', animations: true, tableRowHover: true };
+
+          // The mirror is user-scoped: { v:1, userId, appearance }. Honour it
+          // only when its userId matches the user in Supabase's own persisted
+          // session ('accord-crm-auth', set in src/lib/supabaseClient.js).
+          // Otherwise fall back to defaults, so User B never inherits User A's
+          // theme when the tab was closed without logging out.
+          // This reads the session entry; it never writes it and never touches
+          // the tokens inside it.
+          // ES5 syntax only: this block is served raw (Vite does not transpile
+          // inline scripts), and a parse error here would break flash
+          // prevention entirely rather than being caught by the try/catch.
+          var uid = null;
+          try {
+            var sess = JSON.parse(localStorage.getItem('accord-crm-auth') || 'null');
+            if (sess && sess.user && sess.user.id) uid = sess.user.id;
+          } catch (e) {}
+
+          var cached = null;
+          try {
+            var c = JSON.parse(localStorage.getItem('accord-appearance') || 'null');
+            if (c && c.v === 1 && c.userId && uid && c.userId === uid) cached = c.appearance;
+          } catch (e) {}
+
+          var a = Object.assign(d, cached || {});
+          var dark = a.theme === 'dark' || (a.theme === 'system' &&
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var r = document.documentElement;
+          r.classList.toggle('dark', dark);
+          r.dataset.accent = a.accentColor;
+          r.dataset.fontSize = a.fontSize;
+          r.dataset.density = a.density;
+          r.dataset.rowHover = a.tableRowHover === false ? 'off' : 'on';
+          r.dataset.animations = a.animations === false ? 'off' : 'on';
+          r.dataset.themePref = a.theme;
+        } catch (e) { /* defaults already apply */ }
+      })();
+    </script>
+    <title>Accord CRM</title>
+    <meta name="description" content="Accord CRM — enterprise sales intelligence by Accord Technologies Limited." />
+    <meta name="application-name" content="Accord CRM" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

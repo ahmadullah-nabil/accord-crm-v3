@@ -1,0 +1,328 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACCORD CRM — THEME TOKENS
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Every colour token is a space-separated RGB channel triplet so Tailwind's
+   `<alpha-value>` slot keeps working (bg-white/70, ring-teal-400/20, …).
+
+   Layers, in cascade order:
+     :root                      light palette + Accord teal accent (defaults)
+     html.dark                  dark palette — inverts the neutral ramp
+     html[data-accent="…"]      swaps the accent ramp only
+     html[data-font-size="…"]   root font size (rem cascade)
+     html[data-density="…"]     table row padding
+     html[data-row-hover="off"] disables table row hover tint
+     html[data-animations="off"] reduces transitions/animations
+
+   All five attributes are written by src/lib/appearance.js.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Neutral ramp — light ────────────────────────────────────────────── */
+  --c-white:    255 255 255;
+  --c-gray-50:  249 250 251;
+  --c-gray-100: 243 244 246;
+  --c-gray-200: 229 231 235;
+  --c-gray-300: 209 213 219;
+  --c-gray-400: 156 163 175;
+  --c-gray-500: 107 114 128;
+  --c-gray-600: 75 85 99;
+  --c-gray-700: 55 65 81;
+  --c-gray-800: 31 41 55;
+  --c-gray-900: 17 24 39;
+  --c-gray-950: 3 7 18;
+
+  /* ── Sidebar — deliberately dark in BOTH themes (Accord brand rail) ──── */
+  --c-sidebar-bg:     15 25 35;
+  --c-sidebar-hover:  26 37 53;
+  --c-sidebar-active: 30 45 64;
+  --c-sidebar-border: 30 45 64;
+  --c-sidebar-text:   143 163 184;
+  --c-sidebar-muted:  74 99 122;
+
+  /* ── Elevation ───────────────────────────────────────────────────────── */
+  --shadow-card:    0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.06);
+  --shadow-card-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.07);
+  --shadow-card-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+
+  /* ── Root font size (Small / Medium / Large) ─────────────────────────── */
+  --app-font-size: 16px;
+
+  /* ── Table density ───────────────────────────────────────────────────── */
+  --table-cell-py: 0.75rem;
+}
+
+/* ── Dark palette ──────────────────────────────────────────────────────────
+   The neutral ramp is INVERTED: gray-50 becomes the darkest surface and
+   gray-900 the lightest text. This works because the codebase uses the ramp
+   consistently — bg-gray-50/100/200 for surfaces, text-gray-400…900 for text —
+   so one remap flips cards, borders, inputs, tables and empty states at once. */
+html.dark {
+  --c-white:    24 30 38;      /* card / input / dropdown surface */
+  --c-gray-50:  15 20 26;      /* page background, subtle fills   */
+  --c-gray-100: 38 46 56;      /* hairline borders                */
+  --c-gray-200: 48 57 69;      /* borders                         */
+  --c-gray-300: 74 86 101;
+  --c-gray-400: 122 136 153;
+  --c-gray-500: 154 167 182;
+  --c-gray-600: 178 190 203;
+  --c-gray-700: 205 214 224;
+  --c-gray-800: 226 232 240;
+  --c-gray-900: 241 245 249;   /* primary text                    */
+  --c-gray-950: 248 250 252;
+
+  --c-sidebar-bg:     11 17 24;
+  --c-sidebar-hover:  24 33 46;
+  --c-sidebar-active: 32 44 60;
+  --c-sidebar-border: 34 44 58;
+
+  --shadow-card:    0 1px 3px 0 rgba(0,0,0,0.5), 0 1px 2px -1px rgba(0,0,0,0.45);
+  --shadow-card-md: 0 4px 6px -1px rgba(0,0,0,0.55), 0 2px 4px -2px rgba(0,0,0,0.5);
+  --shadow-card-lg: 0 10px 15px -3px rgba(0,0,0,0.6), 0 4px 6px -4px rgba(0,0,0,0.5);
+
+  color-scheme: dark;   /* native scrollbars, form controls, date pickers */
+}
+
+/* ═══ ACCENT RAMPS ═════════════════════════════════════════════════════════
+   Mapped onto Tailwind's `teal` scale, which the whole codebase already uses.
+   Accord Teal is the default and needs no attribute.
+   The official logo SVG is an external asset and is never recoloured. */
+
+:root,
+html[data-accent="teal"] {
+  --c-accent-50:  240 253 250;
+  --c-accent-100: 204 251 241;
+  --c-accent-200: 153 246 228;
+  --c-accent-300: 94 234 212;
+  --c-accent-400: 45 212 191;
+  --c-accent-500: 20 184 166;
+  --c-accent-600: 13 148 136;
+  --c-accent-700: 15 118 110;
+  --c-accent-800: 17 94 89;
+  --c-accent-900: 19 78 74;
+  --c-accent-950: 4 47 46;
+}
+
+html[data-accent="blue"] {
+  --c-accent-50:  239 246 255;
+  --c-accent-100: 219 234 254;
+  --c-accent-200: 191 219 254;
+  --c-accent-300: 147 197 253;
+  --c-accent-400: 96 165 250;
+  --c-accent-500: 59 130 246;
+  --c-accent-600: 37 99 235;
+  --c-accent-700: 29 78 216;
+  --c-accent-800: 30 64 175;
+  --c-accent-900: 30 58 138;
+  --c-accent-950: 23 37 84;
+}
+
+html[data-accent="purple"] {
+  --c-accent-50:  245 243 255;
+  --c-accent-100: 237 233 254;
+  --c-accent-200: 221 214 254;
+  --c-accent-300: 196 181 253;
+  --c-accent-400: 167 139 250;
+  --c-accent-500: 139 92 246;
+  --c-accent-600: 124 58 237;
+  --c-accent-700: 109 40 217;
+  --c-accent-800: 91 33 182;
+  --c-accent-900: 76 29 149;
+  --c-accent-950: 46 16 101;
+}
+
+html[data-accent="orange"] {
+  --c-accent-50:  255 247 237;
+  --c-accent-100: 255 237 213;
+  --c-accent-200: 254 215 170;
+  --c-accent-300: 253 186 116;
+  --c-accent-400: 251 146 60;
+  --c-accent-500: 249 115 22;
+  --c-accent-600: 234 88 12;
+  --c-accent-700: 194 65 12;
+  --c-accent-800: 154 52 18;
+  --c-accent-900: 124 45 18;
+  --c-accent-950: 67 20 7;
+}
+
+/* Dark mode lifts the accent slightly so it stays legible on dark surfaces */
+html.dark[data-accent="blue"]   { --c-accent-500: 96 165 250; --c-accent-600: 59 130 246; }
+html.dark[data-accent="purple"] { --c-accent-500: 167 139 250; --c-accent-600: 139 92 246; }
+html.dark[data-accent="orange"] { --c-accent-500: 251 146 60;  --c-accent-600: 249 115 22; }
+
+/* ═══ FONT SIZE ════════════════════════════════════════════════════════════
+   Tailwind sizes are rem-based, so changing the root size scales the whole
+   application proportionally — no per-component work. */
+html[data-font-size="small"]  { --app-font-size: 14px; }
+html[data-font-size="medium"] { --app-font-size: 16px; }
+html[data-font-size="large"]  { --app-font-size: 18px; }
+
+/* ═══ TABLE DENSITY ════════════════════════════════════════════════════════
+   Applied globally to every data table. The six table components each use
+   `px-4 py-3` on th/td; these rules out-specify that utility (0,1,2 vs 0,1,0)
+   without !important, so no table component needed editing. */
+html[data-density="compact"]     { --table-cell-py: 0.375rem; }
+html[data-density="comfortable"] { --table-cell-py: 0.75rem; }
+html[data-density="spacious"]    { --table-cell-py: 1.125rem; }
+
+html[data-density] table th,
+html[data-density] table td {
+  padding-top:    var(--table-cell-py);
+  padding-bottom: var(--table-cell-py);
+}
+
+/* ═══ TABLE ROW HOVER ══════════════════════════════════════════════════════ */
+html[data-row-hover="off"] table tbody tr:hover {
+  background-color: transparent;
+}
+
+/* ═══ MOTION ═══════════════════════════════════════════════════════════════
+   `.animate-spin` is exempt: a frozen loading spinner reads as a hung app.
+   prefers-reduced-motion is honoured as an accessibility baseline regardless
+   of the stored preference. */
+html[data-animations="off"] *:not(.animate-spin),
+html[data-animations="off"] *:not(.animate-spin)::before,
+html[data-animations="off"] *:not(.animate-spin)::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *:not(.animate-spin),
+  *:not(.animate-spin)::before,
+  *:not(.animate-spin)::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+    /* Drives the Small / Medium / Large appearance setting */
+    font-size: var(--app-font-size, 16px);
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/70 backdrop-blur-md border border-gray-100/60;
+  }
+
+  .glass-dark {
+    background: rgba(15, 25, 35, 0.85);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .card {
+    @apply bg-white rounded-xl border border-gray-100 shadow-card;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200 hover:shadow-card-md hover:-translate-y-0.5;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-600
+           text-white font-medium text-sm rounded-xl transition-all duration-200
+           shadow-sm hover:shadow-glow-teal active:scale-[0.98] disabled:opacity-50
+           disabled:cursor-not-allowed disabled:hover:bg-teal-500 disabled:hover:shadow-sm;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50
+           text-gray-700 font-medium text-sm rounded-xl border border-gray-200
+           transition-all duration-200 shadow-sm active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-2 text-gray-600
+           hover:text-gray-900 hover:bg-gray-100 font-medium text-sm rounded-xl
+           transition-all duration-200 active:scale-[0.98];
+  }
+
+  .input-base {
+    @apply w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-sm
+           text-gray-900 placeholder-gray-400 outline-none
+           transition-all duration-200
+           focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20
+           disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed;
+  }
+
+  .label-base {
+    @apply block text-sm font-medium text-gray-700 mb-1.5;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+           text-sidebar-text transition-all duration-200 cursor-pointer
+           hover:bg-sidebar-hover hover:text-white;
+  }
+
+  .nav-item-active {
+    @apply nav-item bg-sidebar-active text-white;
+  }
+
+  .skeleton {
+    @apply animate-pulse bg-gray-200 rounded;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

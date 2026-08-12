@@ -1,0 +1,26 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Accord CRM — Supabase project configuration
+# ═══════════════════════════════════════════════════════════════════════════
+# Created for the external Mail & Calendar integration phase. This is the first
+# server-side code in the project, so it is also the first config.toml.
+
+project_id = "accord-crm"
+
+[functions.oauth-start]
+# Requires a signed-in CRM user: the caller's JWT identifies whose mailbox is
+# being connected.
+verify_jwt = true
+
+[functions.oauth-callback]
+# MUST be false. The caller is Google / Microsoft / Zoho redirecting the
+# browser back after consent — they hold no Supabase session and cannot send a
+# JWT. Authenticity is established instead by the single-use, unexpired,
+# user-bound `state` value minted by oauth-start, which is why that check is
+# an atomic compare-and-set rather than a read followed by a write.
+verify_jwt = false
+
+[functions.integration-list]
+verify_jwt = true
+
+[functions.integration-disconnect]
+verify_jwt = true
