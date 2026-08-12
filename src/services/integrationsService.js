@@ -74,6 +74,17 @@ function isNotDeployed(error) {
 }
 
 /**
+ * The same normalisation, exported for other integration-backed services.
+ *
+ * emailService.js calls send-email and needs identical error handling — a
+ * second private copy of toError() would drift the first time one of them
+ * learned about a new failure code.
+ */
+export function normaliseIntegrationError(error, data) {
+  return toError(error, data)
+}
+
+/**
  * List the signed-in user's connected accounts.
  * Returns metadata only — see the note above.
  */
@@ -179,6 +190,9 @@ export const ERROR_MESSAGES = {
   admin_consent_required: 'Your Microsoft administrator must approve Accord CRM before this account can be connected.',
   unauthorized:           'Your session expired. Please sign in again.',
   bad_request:            'That request was not valid.',
+  no_email_account:       'No mailbox is connected yet. Connect one in Settings to send email.',
+  send_failed:            'The provider would not send that message. The details are below.',
+  invalid_recipient:      'One of the email addresses is not valid. Check the recipients and try again.',
   provider_error:         'Something went wrong connecting to the provider. Please try again.',
   not_deployed:           'Integration service unavailable — the Accord CRM integration functions have not been deployed to this Supabase project yet. Connecting accounts will not work until they are.',
 }

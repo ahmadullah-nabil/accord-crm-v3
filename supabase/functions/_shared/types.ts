@@ -52,11 +52,103 @@ export interface AuthUrlParams {
  *  Zoho uses this to tell us which data centre the user actually authorised. */
 export type CallbackContext = Record<string, string>
 
+// ─── Email sending (Phase 1) ──────────────────────────────────────────────────
+
+export interface EmailAddress {
+  email: string
+  name?: string
+}
+
+/** One file on an outgoing message. Declared now; populated in Phase 1b. */
+export interface EmailAttachment {
+  filename: string
+  mimeType: string
+  /** Base64 of the file bytes (NOT base64url, NOT a data: URL). */
+  contentBase64: string
+  /** Set only for images referenced inline from the HTML body via cid:. */
+  contentId?: string
+}
+
+/**
+ * A message to send, in provider-neutral form.
+ *
+ * Both the HTML and the plain-text body are REQUIRED, not optional. Making the
+ * text part optional would mean the first caller that forgot it silently ships
+ * html-only mail, which is the single easiest way to land in a spam folder.
+ * send-email derives the text part automatically, so no caller has to write it.
+ */
+export interface SendEmailInput {
+  from: EmailAddress
+  to: EmailAddress[]
+  cc?: EmailAddress[]
+  bcc?: EmailAddress[]
+  replyTo?: EmailAddress
+  subject: string
+  html: string
+  text: string
+
+  /** Pre-generated Message-ID, so the stored value and the sent header match. */
+  messageId?: string
+  /** Message-ID of the message being replied to. */
+  inReplyTo?: string | null
+  /** Full chain, oldest first. Sent as the References header. */
+  references?: string[]
+  /**
+   * Provider-side conversation id, when we have one from an earlier send.
+   * Only Gmail consumes this today (threadId on messages.send).
+   */
+  providerThreadId?: string | null
+
+  attachments?: EmailAttachment[]
+}
+
+export interface SendEmailResult {
+  /** The provider's own id for the sent message. Null when it returns none. */
+  providerMessageId: string | null
+  /** The provider's conversation id, where the concept exists. */
+  providerThreadId: string | null
+  /** The Message-ID header actually written into the message we submitted. */
+  messageId: string
+}
+
+/**
+ * Whether a provider files its own copy of a sent message in the user's Sent
+ * folder. Declared per adapter rather than assumed, because a user who sends
+ * from the CRM, opens their mailbox and finds nothing in Sent concludes the
+ * mail was never sent — the failure mode looks identical to a real failure.
+ *
+ *   native      documented to save a copy with no extra call from us
+ *   unverified  no documented statement either way; must be confirmed against
+ *               a live account before the UI promises anything
+ *   none        confirmed not to; would need an explicit append after sending
+ */
+export type SentCopyBehaviour = 'native' | 'unverified' | 'none'
+
+/**
+ * What an adapter needs to authenticate one API call.
+ *
+ * Deliberately NOT the ValidToken from tokens.ts: types.ts is imported BY
+ * tokens.ts, so depending on it here would make the module graph circular.
+ * The caller builds this from a ValidToken — `authorization` comes from
+ * authHeader(), which is the one place that knows Zoho needs its own scheme.
+ */
+export interface ProviderAuth {
+  /** Complete Authorization header value, scheme included. */
+  authorization: string
+  /** Zoho's data-centre API host. Null for Google and Microsoft. */
+  apiDomain: string | null
+  /** The connected mailbox address (integration_accounts.account_email). */
+  accountEmail: string
+  accountName: string
+}
+
 export interface ProviderAdapter {
   readonly id: ProviderId
   readonly label: string
   /** Capabilities this adapter can serve. Not every provider offers both. */
   readonly capabilities: Capability[]
+  /** See SentCopyBehaviour. Read by the UI before it claims anything. */
+  readonly sentCopy: SentCopyBehaviour
 
   /** Minimum scopes for ONE capability. Never a union "just in case". */
   scopesFor(capability: Capability): string[]
@@ -81,6 +173,18 @@ export interface ProviderAdapter {
   /** Revoke at the provider. Returns false when unsupported or already gone —
    *  never throws, because local cleanup must proceed regardless. */
   revoke(token: string, apiDomain?: string | null): Promise<boolean>
+
+  /**
+   * Send one message from the connected mailbox.
+   *
+   * Implementations MUST throw IntegrationError('send_failed', …) on a provider
+   * rejection, with status 502 for anything retryable (5xx, throttling) and 400
+   * for anything the caller could fix (bad address, oversized body). send-email
+   * records the distinction, and Phase 3's retry logic will act on it.
+   *
+   * Only present on adapters whose `capabilities` include 'email'.
+   */
+  sendEmail(auth: ProviderAuth, input: SendEmailInput): Promise<SendEmailResult>
 }
 
 /** Raised with a stable machine-readable code so the UI can react precisely
@@ -97,6 +201,9 @@ export class IntegrationError extends Error {
       | 'refresh_failed'         // refresh token no longer valid
       | 'identity_failed'        // could not read the account identity
       | 'admin_consent_required' // Microsoft tenant policy
+      | 'no_email_account'       // no connected account can send mail (Phase 1)
+      | 'send_failed'            // the provider rejected the message (Phase 1)
+      | 'invalid_recipient'      // a recipient address is malformed (Phase 1)
       | 'provider_error'
       | 'unauthorized'
       | 'bad_request',

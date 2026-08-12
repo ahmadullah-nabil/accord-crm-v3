@@ -17,6 +17,7 @@ import { useRoleByName }           from '../../hooks/useTeam.js'
 import { STATUS_CONFIG, formatMeetingDateTime } from '../../lib/meetingsData.js'
 import { STATUS_CONFIG as TASK_STATUS_CONFIG }  from '../../lib/tasksData.js'
 import { TimelinePanel }           from '../timeline/TimelinePanel.jsx'
+import { EmailComposer }           from '../email/EmailComposer.jsx'
 import { Avatar }                  from '../ui/Avatar.jsx'
 import { Skeleton }                from '../ui/Skeleton.jsx'
 
@@ -101,6 +102,8 @@ export function LeadDetailPanel() {
     })
   }
 
+  const [composerOpen, setComposerOpen] = React.useState(false)
+
   return (
     <>
       {/* Overlay */}
@@ -131,6 +134,17 @@ export function LeadDetailPanel() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
+                {/* Email — not permission-gated. Any user who can see a lead can
+                    email it, and the send goes from their OWN mailbox, so there
+                    is no privilege to escalate here. */}
+                <button
+                  onClick={() => setComposerOpen(true)}
+                  disabled={!lead.email}
+                  className="p-2 rounded-xl text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors disabled:opacity-40 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                  title={lead.email ? `Email ${lead.name || lead.company}` : 'This lead has no email address'}
+                >
+                  <Mail size={15} />
+                </button>
                 {perms.canConvert && (
                   <button
                     onClick={handleConvertToOpportunity}
@@ -344,6 +358,13 @@ export function LeadDetailPanel() {
           </>
         )}
       </div>
+
+      <EmailComposer
+        open={composerOpen && Boolean(lead)}
+        onClose={() => setComposerOpen(false)}
+        record={lead}
+        relatedType="lead"
+      />
     </>
   )
 }

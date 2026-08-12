@@ -33,6 +33,10 @@ export const TIMELINE_TYPES = {
   FOLLOWUP_LOGGED:     'followup_logged',
   FOLLOWUP_SCHEDULED:  'followup_scheduled',
   MEETING_NOTE_ADDED:  'meeting_note_added',
+  // Written by the send-email Edge Function under the service-role key, not by
+  // this service — the browser is not permitted to assert that a provider
+  // accepted a message. Declared here so the timeline can render it.
+  EMAIL_SENT:          'email_sent',
 }
 
 export const FOLLOWUP_TYPES = ['Call', 'Email', 'Visit', 'Demo', 'Meeting', 'Other']

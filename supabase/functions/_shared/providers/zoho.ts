@@ -21,7 +21,8 @@
 // issues NO refresh token — the single most common Zoho integration failure.
 
 import type {
-  AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderIdentity, TokenSet,
+  AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderAuth,
+  ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
 } from '../types.ts'
 import { IntegrationError } from '../types.ts'
 import { postForm, expiresAtFrom } from '../http.ts'
@@ -101,6 +102,28 @@ export const zohoAdapter: ProviderAdapter = {
   id: 'zoho',
   label: 'Zoho',
   capabilities: ['email', 'calendar'],
+
+  // ┌───────────────────────────────────────────────────────────────────────┐
+  // │ UNVERIFIED — and deliberately not assumed either way.                 │
+  // ├───────────────────────────────────────────────────────────────────────┤
+  // │ Zoho's send API documents fromAddress, toAddress, subject, content,   │
+  // │ mailFormat, askReceipt, encoding, attachments and the scheduling      │
+  // │ fields. It says NOTHING about the Sent folder, and exposes no flag to │
+  // │ control it — unlike Graph, which has saveToSentItems.                 │
+  // │                                                                       │
+  // │ The endpoint is /api/accounts/{accountId}/messages: an operation on   │
+  // │ the mailbox itself, not an SMTP relay, which makes a native Sent copy │
+  // │ very likely. Likely is not verified, so this reads 'unverified' until │
+  // │ someone sends from a live Zoho account and looks.                     │
+  // │                                                                       │
+  // │ IF IT TURNS OUT NOT TO: the fallback is not free. Filing a copy would │
+  // │ mean listing folders to find the Sent folder id, which needs          │
+  // │ ZohoMail.folders.READ — a new scope on the consent screen — and then  │
+  // │ a second create-in-folder call per send. That is a scope decision,    │
+  // │ not a bug fix, and it should be made deliberately rather than         │
+  // │ reflexively.                                                          │
+  // └───────────────────────────────────────────────────────────────────────┘
+  sentCopy: 'unverified',
 
   scopesFor(capability) {
     return [...CAPABILITY_SCOPES[capability]]
@@ -253,6 +276,106 @@ export const zohoAdapter: ProviderAdapter = {
     )
   },
 
+  /**
+   * Send through Zoho Mail.
+   *
+   * ┌───────────────────────────────────────────────────────────────────────┐
+   * │ THIS ENDPOINT DOES NOT TAKE MIME. It takes a JSON object.             │
+   * ├───────────────────────────────────────────────────────────────────────┤
+   * │ Google and Microsoft both accept a raw RFC 2822 message, so both use  │
+   * │ buildMimeMessage() unchanged. Zoho has no raw-message endpoint at     │
+   * │ all: you hand it fromAddress / toAddress / subject / content and it   │
+   * │ assembles the message itself. Three consequences, all of them real:   │
+   * │                                                                       │
+   * │ 1. THE PLAIN-TEXT ALTERNATIVE IS NOT OURS TO SEND. mailFormat picks   │
+   * │    html OR plaintext; there is no way to supply both parts. We send   │
+   * │    html and Zoho derives its own text alternative. input.text is      │
+   * │    still generated and still stored in email_messages — the CRM's     │
+   * │    own record of what went out stays consistent across providers      │
+   * │    even though the wire format differs.                               │
+   * │                                                                       │
+   * │ 2. THREADING HEADERS CANNOT BE SET. The send endpoint has no          │
+   * │    In-Reply-To or References parameter. Zoho's separate reply         │
+   * │    endpoint would thread, but it is addressed by the ORIGINAL Zoho    │
+   * │    messageId — a value obtainable only by reading the mailbox, which  │
+   * │    ZohoMail.messages.CREATE deliberately does not permit. So replies  │
+   * │    sent from the CRM through Zoho arrive unthreaded. That is a        │
+   * │    provider limitation under send-only scope, not a bug to hunt.      │
+   * │                                                                       │
+   * │ 3. accountId IS NOT provider_account_id. fetchIdentity() stores the   │
+   * │    ZUID on integration_accounts, because that is the stable identity. │
+   * │    This endpoint needs the MAIL accountId, a different field of the   │
+   * │    same accounts response, so it has to be resolved separately —      │
+   * │    see resolveMailAccount() below.                                    │
+   * └───────────────────────────────────────────────────────────────────────┘
+   */
+  async sendEmail(auth: ProviderAuth, input: SendEmailInput): Promise<SendEmailResult> {
+    const mailHost = zohoMailFromApiDomain(auth.apiDomain)
+    const account  = await resolveMailAccount(auth, mailHost)
+
+    // Zoho takes recipients as ONE comma-separated string per field, not an
+    // array. Display names are dropped: the endpoint documents these as plain
+    // address fields, and a "Name <addr>" value is rejected by some DCs.
+    const addresses = (list?: { email: string }[]) =>
+      (list ?? []).map((a) => a.email.trim()).filter(Boolean).join(',')
+
+    const body: Record<string, unknown> = {
+      // MUST be an address the authenticated account is allowed to send as.
+      // resolveMailAccount picks a validated one rather than trusting the
+      // stored account_email, which can drift from the mailbox's send
+      // identities after an alias change.
+      fromAddress: account.fromAddress,
+      toAddress:   addresses(input.to),
+      subject:     input.subject,
+      content:     input.html,
+      mailFormat:  'html',
+      encoding:    'UTF-8',
+    }
+    if (input.cc?.length)  body.ccAddress  = addresses(input.cc)
+    if (input.bcc?.length) body.bccAddress = addresses(input.bcc)
+
+    const res = await fetch(`${mailHost}/api/accounts/${account.accountId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: auth.authorization,   // Zoho-oauthtoken, never Bearer
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    const text = await res.text()
+    let payload: any = null
+    try { payload = JSON.parse(text) } catch { /* non-JSON error body */ }
+
+    // Zoho reports failure in TWO places and they do not always agree: the HTTP
+    // status, and a status.code inside a 200 response. Checking only res.ok
+    // would record a failed send as successful.
+    const apiCode = Number(payload?.status?.code ?? (res.ok ? 200 : res.status))
+    if (!res.ok || apiCode !== 200) {
+      const detail =
+        payload?.data?.moreInfo ??
+        payload?.status?.description ??
+        text.slice(0, 300)
+      console.error(`[zoho] send failed http=${res.status} api=${apiCode}: ${detail}`)
+      throw new IntegrationError(
+        'send_failed',
+        `Zoho rejected the message: ${detail}`,
+        res.status === 429 || res.status >= 500 ? 502 : 400,
+        String(apiCode),
+      )
+    }
+
+    return {
+      // Zoho's own id for the stored message. Not an RFC Message-ID.
+      providerMessageId: payload?.data?.messageId != null
+        ? String(payload.data.messageId)
+        : null,
+      providerThreadId: null,   // no thread concept on this endpoint
+      messageId: input.messageId ?? '',
+    }
+  },
+
   async revoke(token, apiDomain): Promise<boolean> {
     const host = zohoAccountsFromApiDomain(apiDomain)
     try {
@@ -279,4 +402,116 @@ function zohoAccountsFromApiDomain(apiDomain?: string | null): string {
   } catch {
     return DEFAULT_ACCOUNTS
   }
+}
+
+/** Map a stored api_domain to the MAIL host in the same data centre.
+ *  Not zohoapis.<tld> — that host serves CRM, Desk and Books, never Mail. */
+function zohoMailFromApiDomain(apiDomain?: string | null): string {
+  return zohoAccountsFromApiDomain(apiDomain).replace('//accounts.', '//mail.')
+}
+
+// ── Mail account resolution ───────────────────────────────────────────────────
+//
+// The send endpoint is addressed by Zoho's MAIL accountId, which we do not
+// store: integration_accounts.provider_account_id holds the ZUID, because that
+// is the identity that survives an address change. Both values come from the
+// same GET /api/accounts response, so one extra call per send resolves it.
+//
+// Cached in-isolate to keep that off the hot path for a burst of sends handled
+// by the same warm instance — the same pragmatic scope as the refresh
+// coalescing map in tokens.ts. It is not shared between isolates and does not
+// need to be: a miss costs one cheap GET, never a wrong answer.
+//
+// TEN MINUTES, not indefinite. A mailbox's send identities change when an alias
+// is added or verified, and a stale fromAddress is rejected outright by the
+// send endpoint.
+//
+// If this call ever becomes a measurable cost, the durable fix is a
+// provider_metadata JSONB column on integration_accounts — a schema change to
+// the proven integration layer, so it needs a decision rather than a commit.
+
+interface ZohoMailAccount {
+  accountId: string
+  fromAddress: string
+}
+
+const MAIL_ACCOUNT_TTL_MS = 10 * 60 * 1000
+const mailAccountCache = new Map<string, { value: ZohoMailAccount; expiresAt: number }>()
+
+async function resolveMailAccount(
+  auth: ProviderAuth,
+  mailHost: string,
+): Promise<ZohoMailAccount> {
+  const key = `${mailHost}|${auth.accountEmail.toLowerCase()}`
+  const hit = mailAccountCache.get(key)
+  if (hit && hit.expiresAt > Date.now()) return hit.value
+
+  const res = await fetch(`${mailHost}/api/accounts`, {
+    headers: { Authorization: auth.authorization, Accept: 'application/json' },
+  })
+  const text = await res.text()
+
+  if (!res.ok) {
+    console.error(`[zoho] accounts lookup failed ${res.status}: ${text.slice(0, 300)}`)
+    throw new IntegrationError(
+      'send_failed',
+      'Could not read the Zoho mailbox details needed to send. Please reconnect the account.',
+      res.status >= 500 ? 502 : 400,
+      String(res.status),
+    )
+  }
+
+  let payload: any = null
+  try { payload = JSON.parse(text) } catch { /* handled below */ }
+  const accounts: any[] = Array.isArray(payload?.data) ? payload.data : []
+
+  if (accounts.length === 0) {
+    throw new IntegrationError(
+      'send_failed',
+      'Zoho returned no mailbox for this account.',
+      400,
+    )
+  }
+
+  const wanted = auth.accountEmail.trim().toLowerCase()
+  const matches = (acc: any) =>
+    [acc?.primaryEmailAddress, acc?.mailboxAddress, acc?.incomingUserName]
+      .filter(Boolean)
+      .some((addr: string) => String(addr).toLowerCase() === wanted)
+
+  // Prefer the mailbox we actually connected. A user can have several accounts
+  // on one Zoho login — including IMAP_ACCOUNT entries for external mailboxes —
+  // and sending from the wrong one would work, which is what makes it dangerous.
+  const account =
+    accounts.find(matches) ??
+    accounts.find((acc) => acc?.type === 'ZOHO_ACCOUNT') ??
+    accounts[0]
+
+  const accountId = account?.accountId != null ? String(account.accountId) : ''
+  if (!accountId) {
+    throw new IntegrationError(
+      'send_failed',
+      'Zoho returned a mailbox with no account id.',
+      400,
+    )
+  }
+
+  // sendMailDetails lists every identity this mailbox may send as. Prefer a
+  // live one that matches the connected address; mode 'mailbox' is the account's
+  // own address, 'extfrom' is an external identity that may not be validated.
+  const identities: any[] = Array.isArray(account?.sendMailDetails)
+    ? account.sendMailDetails
+    : []
+  const usable = identities.filter((d) => d?.status !== false && d?.fromAddress)
+
+  const fromAddress =
+    usable.find((d) => String(d.fromAddress).toLowerCase() === wanted)?.fromAddress ??
+    usable.find((d) => d.mode === 'mailbox')?.fromAddress ??
+    account?.primaryEmailAddress ??
+    account?.mailboxAddress ??
+    auth.accountEmail
+
+  const value: ZohoMailAccount = { accountId, fromAddress: String(fromAddress) }
+  mailAccountCache.set(key, { value, expiresAt: Date.now() + MAIL_ACCOUNT_TTL_MS })
+  return value
 }

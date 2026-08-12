@@ -22,6 +22,7 @@ import { useRoleByName }                    from '../../hooks/useTeam.js'
 import { Avatar }                           from '../ui/Avatar.jsx'
 import { Skeleton, SkeletonText }           from '../ui/Skeleton.jsx'
 import { TimelinePanel }                    from '../timeline/TimelinePanel.jsx'
+import { EmailComposer }                    from '../email/EmailComposer.jsx'
 
 export function ContactDetailPanel() {
   const { detailPanelOpen, closeDetail, selectedContactId, openEditModal } = useContactsStore()
@@ -74,6 +75,7 @@ export function ContactDetailPanel() {
   const qc   = useQueryClient()
 
   const [converting, setConverting] = React.useState(false)
+  const [composerOpen, setComposerOpen] = React.useState(false)
 
   const handleConvertToLead = async () => {
     if (!contact) return
@@ -137,6 +139,17 @@ export function ContactDetailPanel() {
               </div>
 
               <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                {/* Email — disabled without an address rather than hidden, so
+                    the reason is visible instead of the button just missing. */}
+                <button
+                  onClick={() => setComposerOpen(true)}
+                  disabled={!contact.email}
+                  className="p-2 rounded-xl text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors disabled:opacity-40 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                  title={contact.email ? `Email ${contact.name}` : 'This contact has no email address'}
+                >
+                  <Mail size={15} />
+                </button>
+
                 {/* Convert to Lead — hidden after conversion */}
                 {!contact.linkedLeadId ? (
                   <button
@@ -338,6 +351,13 @@ export function ContactDetailPanel() {
           </>
         )}
       </div>
+
+      <EmailComposer
+        open={composerOpen && Boolean(contact)}
+        onClose={() => setComposerOpen(false)}
+        record={contact}
+        relatedType="contact"
+      />
     </>
   )
 }

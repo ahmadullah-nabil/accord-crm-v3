@@ -39,6 +39,7 @@ const EVENT_CONFIG = {
   [TIMELINE_TYPES.FOLLOWUP_LOGGED]:    { icon: Phone,         bg: 'bg-purple-50', fg: 'text-purple-600'  },
   [TIMELINE_TYPES.FOLLOWUP_SCHEDULED]: { icon: Clock,         bg: 'bg-orange-50', fg: 'text-orange-600'  },
   [TIMELINE_TYPES.MEETING_NOTE_ADDED]: { icon: Users,         bg: 'bg-blue-50',   fg: 'text-blue-600'    },
+  [TIMELINE_TYPES.EMAIL_SENT]:         { icon: Mail,          bg: 'bg-teal-50',   fg: 'text-teal-600'    },
 }
 
 const FOLLOWUP_ICONS = { Call: Phone, Email: Mail, Visit: Users, Demo: Users, Meeting: Calendar }
@@ -65,7 +66,8 @@ function TimelineEvent({ event, isLast }) {
   const hasDetail =
     (event.type === TIMELINE_TYPES.NOTE_ADDED && meta.body?.length > 0) ||
     (event.type === TIMELINE_TYPES.FOLLOWUP_LOGGED && meta.outcome?.length > 0) ||
-    (event.type === TIMELINE_TYPES.MEETING_NOTE_ADDED && (meta.summary || meta.decisions || meta.nextActions))
+    (event.type === TIMELINE_TYPES.MEETING_NOTE_ADDED && (meta.summary || meta.decisions || meta.nextActions)) ||
+    (event.type === TIMELINE_TYPES.EMAIL_SENT && (meta.preview || meta.to?.length))
 
   return (
     <div className="flex gap-2.5 group">
@@ -140,6 +142,30 @@ function TimelineEvent({ event, isLast }) {
               <p className="text-xs text-gray-700 bg-purple-50 border border-purple-100 rounded-lg p-2.5 leading-relaxed whitespace-pre-wrap">
                 {meta.outcome}
               </p>
+            )}
+
+            {/* Sent email — recipients and a text excerpt.
+                The stored body_html is NEVER rendered here. metadata.preview is
+                the plain-text alternative, which is what the recipient's client
+                would fall back to and is safe to put on a page. */}
+            {event.type === TIMELINE_TYPES.EMAIL_SENT && (
+              <div className="bg-teal-50 border border-teal-100 rounded-lg p-2.5 space-y-1.5">
+                {meta.to?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-teal-600 uppercase tracking-wide mb-0.5">To</p>
+                    <p className="text-xs text-gray-700 break-words">{meta.to.join(', ')}</p>
+                  </div>
+                )}
+                {meta.preview && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-teal-600 uppercase tracking-wide mb-0.5">Message</p>
+                    <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{meta.preview}</p>
+                  </div>
+                )}
+                {meta.provider && (
+                  <p className="text-[10px] text-gray-400">Sent via {meta.provider}</p>
+                )}
+              </div>
             )}
 
             {/* Meeting note fields */}

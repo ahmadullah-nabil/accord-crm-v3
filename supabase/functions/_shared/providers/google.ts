@@ -23,15 +23,18 @@
 // calendars, which the CRM does not need.
 
 import type {
-  AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderIdentity, TokenSet,
+  AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderAuth,
+  ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
 } from '../types.ts'
 import { IntegrationError } from '../types.ts'
 import { postForm, getJson, expiresAtFrom } from '../http.ts'
+import { buildMimeMessage, base64Url } from '../mime.ts'
 
 const AUTH_URL   = 'https://accounts.google.com/o/oauth2/v2/auth'
 const TOKEN_URL  = 'https://oauth2.googleapis.com/token'
 const REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
 const USERINFO   = 'https://www.googleapis.com/oauth2/v3/userinfo'
+const SEND_URL   = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
 
 // Identity scopes only — needed to label the connected account in the UI.
 const BASE_SCOPES = ['openid', 'email', 'profile']
@@ -45,6 +48,18 @@ export const googleAdapter: ProviderAdapter = {
   id: 'google',
   label: 'Google',
   capabilities: ['email', 'calendar'],
+
+  // DOCUMENTED. Gmail applies the SENT system label automatically to anything
+  // sent through messages.send, and SENT cannot be applied manually at all —
+  // so this is not merely the default behaviour, it is the only behaviour.
+  // (Gmail API → Manage labels: SENT, "can be manually applied: no".)
+  //
+  // A consequence worth stating: if Gmail ever did NOT file the copy, we could
+  // not compensate. Inserting into SENT needs gmail.insert or gmail.modify,
+  // both Restricted-tier scopes that would drag the whole project into a CASA
+  // assessment. Relying on the native behaviour is the only option that keeps
+  // the scope promise, and it happens to be the documented one.
+  sentCopy: 'native',
 
   scopesFor(capability) {
     return [...BASE_SCOPES, ...CAPABILITY_SCOPES[capability]]
@@ -123,6 +138,51 @@ export const googleAdapter: ProviderAdapter = {
     const me = await getJson(USERINFO, accessToken)
     if (!me.sub) throw new IntegrationError('identity_failed', 'Google returned no account id.')
     return { accountId: me.sub, email: me.email ?? '', name: me.name ?? '' }
+  },
+
+  async sendEmail(auth: ProviderAuth, input: SendEmailInput): Promise<SendEmailResult> {
+    const { raw, messageId } = buildMimeMessage(input)
+
+    // threadId groups the message with earlier ones in the SENDER's mailbox.
+    // It does nothing for the recipient — their client threads purely on the
+    // In-Reply-To / References headers, which buildMimeMessage already wrote.
+    // Gmail additionally requires a matching Subject before it will honour
+    // threadId, which is why the composer prefixes replies with "Re: ".
+    const body: Record<string, unknown> = { raw: base64Url(raw) }
+    if (input.providerThreadId) body.threadId = input.providerThreadId
+
+    const res = await fetch(SEND_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: auth.authorization,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    const text = await res.text()
+    let payload: any = null
+    try { payload = JSON.parse(text) } catch { /* non-JSON error body */ }
+
+    if (!res.ok) {
+      const detail = payload?.error?.message ?? text.slice(0, 300)
+      const reason = payload?.error?.errors?.[0]?.reason ?? String(res.status)
+      console.error(`[google] send failed ${res.status} ${reason}: ${detail}`)
+      throw new IntegrationError(
+        'send_failed',
+        `Gmail rejected the message: ${detail}`,
+        // 429 and 5xx are Google's problem and worth retrying; 4xx is ours.
+        res.status === 429 || res.status >= 500 ? 502 : 400,
+        reason,
+      )
+    }
+
+    return {
+      providerMessageId: payload?.id ?? null,
+      providerThreadId:  payload?.threadId ?? null,
+      messageId,
+    }
   },
 
   async revoke(token): Promise<boolean> {

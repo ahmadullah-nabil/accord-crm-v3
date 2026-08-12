@@ -25,8 +25,14 @@ verify_jwt = true
 [functions.integration-disconnect]
 verify_jwt = true
 
-[functions.integration-token-check]
-# TEMPORARY diagnostic (Phase 0 verification). Requires a signed-in user, and
-# returns no token material. Delete this block and the function directory once
-# Phase 1's send-email exercises tokens.ts in normal use.
+[functions.send-email]
+# Phase 1. verify_jwt = true is the default and is load-bearing here: the
+# caller's JWT is the ONLY thing that decides whose mailbox is used. The client
+# never names an integration account, so it cannot send from someone else's
+# connection by guessing an id.
 verify_jwt = true
+
+# integration-token-check has been REMOVED. It was a temporary Phase 0
+# diagnostic that existed to prove tokens.ts refreshed correctly against a live
+# provider. send-email now exercises that path on every send, which is a better
+# test than a read-only probe, so the diagnostic no longer earns its deployment.

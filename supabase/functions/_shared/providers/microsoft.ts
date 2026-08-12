@@ -14,15 +14,18 @@
 // `User.Read` is the minimum needed to label the connected account.
 
 import type {
-  AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderIdentity, TokenSet,
+  AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderAuth,
+  ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
 } from '../types.ts'
 import { IntegrationError } from '../types.ts'
 import { postForm, getJson, expiresAtFrom } from '../http.ts'
+import { buildMimeMessage, base64EncodeText } from '../mime.ts'
 
 const TENANT     = 'common'   // multi-tenant, per decision
 const AUTH_URL   = `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/authorize`
 const TOKEN_URL  = `https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/token`
 const GRAPH_ME   = 'https://graph.microsoft.com/v1.0/me'
+const GRAPH_SEND = 'https://graph.microsoft.com/v1.0/me/sendMail'
 
 const BASE_SCOPES = ['openid', 'profile', 'offline_access', 'User.Read']
 
@@ -35,6 +38,13 @@ export const microsoftAdapter: ProviderAdapter = {
   id: 'microsoft',
   label: 'Microsoft',
   capabilities: ['email', 'calendar'],
+
+  // DOCUMENTED. Graph's sendMail takes a saveToSentItems flag whose default is
+  // true; the docs say to specify it only when you want false. We send MIME
+  // rather than a JSON message resource, and the MIME form takes no parameters
+  // at all — so the default is not just what we choose, it is all that is
+  // reachable on this path. A copy is filed in Sent Items either way.
+  sentCopy: 'native',
 
   scopesFor(capability) {
     return [...BASE_SCOPES, ...CAPABILITY_SCOPES[capability]]
@@ -127,6 +137,64 @@ export const microsoftAdapter: ProviderAdapter = {
       accountId: me.id,
       email:     me.mail ?? me.userPrincipalName ?? '',
       name:      me.displayName ?? '',
+    }
+  },
+
+  /**
+   * UNTESTED. There is no Microsoft app registration for Accord CRM yet, so no
+   * account can connect and this code has never executed against Graph. It is
+   * written to the documented contract and to the same shape as the two proven
+   * adapters; treat the first live run as the real test.
+   *
+   * WHY MIME AND NOT THE JSON MESSAGE RESOURCE
+   * Graph accepts either. JSON looks friendlier, but its internetMessageHeaders
+   * property only permits custom `x-` headers — In-Reply-To and References
+   * cannot be set through it. Threading would silently not work. MIME accepts
+   * them, and reuses the same builder as Gmail, so there is one body format to
+   * reason about instead of two.
+   */
+  async sendEmail(auth: ProviderAuth, input: SendEmailInput): Promise<SendEmailResult> {
+    const { raw, messageId } = buildMimeMessage(input)
+
+    const res = await fetch(GRAPH_SEND, {
+      method: 'POST',
+      headers: {
+        Authorization: auth.authorization,
+        // Not a typo. text/plain is how Graph is told the body is base64 MIME;
+        // application/json would make it expect a message resource instead.
+        'Content-Type': 'text/plain',
+      },
+      body: base64EncodeText(raw),
+    })
+
+    if (!res.ok) {
+      const text = await res.text()
+      let payload: any = null
+      try { payload = JSON.parse(text) } catch { /* non-JSON error body */ }
+      const detail = payload?.error?.message ?? text.slice(0, 300)
+      const code   = payload?.error?.code ?? String(res.status)
+      console.error(`[microsoft] send failed ${res.status} ${code}: ${detail}`)
+
+      // Graph caps a sendMail request at roughly 4 MB. Phase 1 sends no
+      // attachments so this cannot fire yet, but Phase 1b will need the
+      // createUploadSession path for anything larger, and a clear error here
+      // is what will point at it.
+      throw new IntegrationError(
+        'send_failed',
+        `Microsoft rejected the message: ${detail}`,
+        res.status === 429 || res.status >= 500 ? 502 : 400,
+        code,
+      )
+    }
+
+    // A successful sendMail returns 202 Accepted with an EMPTY body — no id of
+    // any kind. Note what that means: 202 says Graph accepted the request, not
+    // that the message was delivered. There is nothing further to record, and
+    // no provider id to store, without a read scope we do not hold.
+    return {
+      providerMessageId: null,
+      providerThreadId:  null,
+      messageId,
     }
   },
 
