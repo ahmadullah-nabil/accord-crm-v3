@@ -15,6 +15,7 @@ import { EmailVerificationPage }   from './pages/auth/EmailVerificationPage.jsx'
 
 import { DashboardPage } from './pages/DashboardPage.jsx'
 import { LeadsPage }     from './pages/LeadsPage.jsx'
+import { LeadRecordPage } from './pages/LeadRecordPage.jsx'
 import { ContactsPage }  from './pages/ContactsPage.jsx'
 import { MeetingsPage }  from './pages/MeetingsPage.jsx'
 import { TasksPage }     from './pages/TasksPage.jsx'
@@ -64,6 +65,10 @@ export default function App() {
         >
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/leads"     element={<LeadsPage />} />
+          {/* step042 — the first REAL record route. Declared AFTER /leads so
+              the static segment wins; react-router v6 ranks static above
+              dynamic regardless, but the order also reads correctly. */}
+          <Route path="/leads/:id" element={<LeadRecordPage />} />
           <Route path="/contacts"  element={<ContactsPage />} />
           <Route path="/meetings"  element={<MeetingsPage />} />
           <Route path="/tasks"     element={<TasksPage />} />
