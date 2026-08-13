@@ -27,7 +27,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Search, Loader2, AlertCircle, CornerDownLeft,
+  Search, Loader2, AlertCircle, CornerDownLeft, Plus,
   Target, Users, Briefcase, Calendar, CheckSquare,
   LayoutDashboard, BarChart2, Bell, Settings, UserCog,
 } from 'lucide-react'
@@ -62,6 +62,24 @@ const NAV_COMMANDS = [
   { label: 'Settings',      to: '/settings',      icon: Settings },
 ]
 
+// step035. Create commands.
+//
+// A correction to what step034's comment claimed: these ARE wireable. Every
+// entity store already exposes openAddModal(), and each page mounts its own
+// form modal — ContactsPage mounts <ContactFormModal /> exactly that way.
+//
+// ORDER MATTERS. The modal component only exists once its page has mounted, so
+// the store flag is set FIRST and the navigation follows, which is the same
+// set-then-navigate sequence the record results use. Navigating first would
+// set the flag against a page that is still unmounting.
+const CREATE_COMMANDS = [
+  { label: 'New contact',     route: '/contacts',      store: useContactsStore,      icon: Users },
+  { label: 'New lead',        route: '/leads',         store: useLeadsStore,         icon: Target },
+  { label: 'New opportunity', route: '/opportunities', store: useOpportunitiesStore, icon: Briefcase },
+  { label: 'New task',        route: '/tasks',         store: useTasksStore,         icon: CheckSquare },
+  { label: 'New meeting',     route: '/meetings',      store: useMeetingsStore,      icon: Calendar },
+]
+
 export function CommandMenu() {
   const { commandMenuOpen, closeCommandMenu } = useUiStore()
   const navigate = useNavigate()
@@ -82,14 +100,21 @@ export function CommandMenu() {
     return NAV_COMMANDS.filter((c) => c.label.toLowerCase().includes(q))
   }, [term])
 
+  const createMatches = useMemo(() => {
+    const q = term.trim().toLowerCase()
+    if (!q) return CREATE_COMMANDS
+    return CREATE_COMMANDS.filter((c) => c.label.toLowerCase().includes(q))
+  }, [term])
+
   // One flat list is what ↑/↓ actually walks, in render order.
   const flat = useMemo(() => {
     const nav = navMatches.map((c) => ({ kind: 'nav', ...c }))
+    const create = createMatches.map((c) => ({ kind: 'create', ...c }))
     const rec = groups.flatMap((g) =>
       g.items.map((item) => ({ kind: 'record', groupLabel: g.label, ...item })),
     )
-    return [...nav, ...rec]
-  }, [navMatches, groups])
+    return [...nav, ...create, ...rec]
+  }, [navMatches, createMatches, groups])
 
   // Reset when the menu opens, not when it closes: clearing on close would
   // wipe the term while the exit is still painting.
@@ -118,6 +143,12 @@ export function CommandMenu() {
     if (!entry) return
     if (entry.kind === 'nav') {
       navigate(entry.to)
+      closeCommandMenu()
+      return
+    }
+    if (entry.kind === 'create') {
+      entry.store.getState().openAddModal()
+      navigate(entry.route)
       closeCommandMenu()
       return
     }
@@ -197,6 +228,26 @@ export function CommandMenu() {
             </>
           )}
 
+          {createMatches.length > 0 && (
+            <>
+              <GroupLabel>Create</GroupLabel>
+              {createMatches.map((c) => {
+                index += 1
+                return (
+                  <Row
+                    key={`create-${c.route}`}
+                    index={index}
+                    active={index === cursor}
+                    icon={Plus}
+                    title={c.label}
+                    onSelect={() => run({ kind: 'create', ...c })}
+                    onHover={setCursor}
+                  />
+                )
+              })}
+            </>
+          )}
+
           {groups.map((g) => (
             <React.Fragment key={g.type}>
               <GroupLabel>{g.label}</GroupLabel>
@@ -221,12 +272,12 @@ export function CommandMenu() {
           ))}
 
           {/* Empty states say which case this is rather than one vague line. */}
-          {!isSearching && isTooShort && navMatches.length === 0 && (
+          {!isSearching && isTooShort && navMatches.length === 0 && createMatches.length === 0 && (
             <p className="px-3 py-6 text-center text-sm text-gray-400">
               Type at least {MIN_QUERY_LENGTH} characters to search records.
             </p>
           )}
-          {!isSearching && !isTooShort && total === 0 && navMatches.length === 0 && (
+          {!isSearching && !isTooShort && total === 0 && navMatches.length === 0 && createMatches.length === 0 && (
             <p className="px-3 py-6 text-center text-sm text-gray-400">
               Nothing matches that.
             </p>
