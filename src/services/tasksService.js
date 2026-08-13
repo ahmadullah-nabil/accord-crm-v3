@@ -59,7 +59,13 @@ function toDb(payload) {
   if (payload.assignee     !== undefined) row.assignee     = payload.assignee
   if (payload.dueDate      !== undefined) row.due_date     = payload.dueDate || null
   if (payload.relatedType  !== undefined) row.related_type  = payload.relatedType ?? 'None'
-  if (payload.relatedId    !== undefined) row.related_id    = payload.relatedId   ?? ''
+  // related_id must be a UUID or NULL, never ''. 025 added
+  // tasks_related_id_is_uuid — CHECK (related_id IS NULL OR related_id ~ uuid)
+  // — and '' matches neither branch, so a task with no related record was
+  // rejected with 23514. Added NOT VALID, so existing rows were grandfathered
+  // and only new writes failed. `|| null` not `?? null`: '' is the value that
+  // has to become NULL. toApp() maps NULL back to '' on read.
+  if (payload.relatedId    !== undefined) row.related_id    = payload.relatedId   || null
   if (payload.relatedLabel !== undefined) row.related_label = payload.relatedLabel ?? ''
   if (payload.tags         !== undefined) {
     row.tags = Array.isArray(payload.tags) ? payload.tags : []

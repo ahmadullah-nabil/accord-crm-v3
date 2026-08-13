@@ -94,8 +94,24 @@ function toDb(payload) {
   if (payload.relatedType !== undefined)
     row.related_type = payload.relatedType ?? 'None'
 
+  // ── related_id must be a UUID or NULL, never '' ────────────────────────────
+  //
+  // 025 added meetings_related_id_is_uuid:
+  //   CHECK (related_id IS NULL OR related_id ~ '<uuid>')
+  //
+  // The empty string satisfies neither branch. `?? ''` only catches null and
+  // undefined, so a meeting with Related Type 'None' — which the form models as
+  // relatedId: '' — sent '' and was rejected with 23514 on EVERY insert.
+  //
+  // It stayed hidden because the constraint was added NOT VALID: existing rows
+  // were never re-checked, so the table looked healthy while nothing new could
+  // be written. `|| null` is deliberate over `?? null` — '' is exactly the
+  // value that has to become NULL here.
+  //
+  // toApp() maps NULL back to '' on read, so app state and the form are
+  // unchanged by this.
   if (payload.relatedId !== undefined)
-    row.related_id = payload.relatedId ?? ''
+    row.related_id = payload.relatedId || null
 
   if (payload.relatedLabel !== undefined)
     row.related_label = payload.relatedLabel ?? ''
