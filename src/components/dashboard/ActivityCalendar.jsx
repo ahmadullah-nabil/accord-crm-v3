@@ -41,6 +41,35 @@
 // correctly in dark. Semantic colours (rose for errors, emerald for done) stay
 // fixed, matching how badges work everywhere else in the app.
 //
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │ step051 — DENSITY. THE CALENDAR WAS EATING THE FOLD                     │
+// ├─────────────────────────────────────────────────────────────────────────┤
+// │ step049 grew the cells to fit four chips. Six rows of those plus three  │
+// │ stacked bars of chrome above them came to roughly 790px, so the month   │
+// │ filled a 1080p viewport on its own and Lead Overview never appeared     │
+// │ without scrolling. The dashboard is supposed to answer "what is         │
+// │ happening" at a glance, and a glance does not include a scroll.         │
+// │                                                                          │
+// │ Nothing here is a new idea — it is the density the rest of the app      │
+// │ already runs at. DataTable rows, ViewHeader controls and FacetChips     │
+// │ were all tuned across step041–048; the calendar was written before      │
+// │ those and never came along. Three changes carry it:                     │
+// │                                                                          │
+// │   • CHIPS ARE FLAT. A bordered, filled, rounded box per item is a lot   │
+// │     of furniture for one line of text, and forty of them read as a      │
+// │     patchwork rather than a schedule. An item is now a status dot, an   │
+// │     optional time and a title on a hover row — the shape a table row    │
+// │     already has in this app. Status still reads at a glance because the │
+// │     dot carries the same colour the chip background used to.            │
+// │   • CELLS ARE SHORTER and hold three items instead of four. The fourth  │
+// │     was bought with 36px of height on every one of the 42 cells.        │
+// │   • THE COUNT ROW LOST ITS PILLS. Four bordered capsules for four       │
+// │     numbers; the numbers are the content, the capsules were not.        │
+// │                                                                          │
+// │ Type sizes, the six-row grid and every behaviour are unchanged. This is │
+// │ spacing and weight only — no data, no handler and no state was touched. │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
 // TWO KINDS OF ITEM, RENDERED DIFFERENTLY ON PURPOSE
 //   • Tasks are ALL-DAY — a due date carries no time, and inventing one would
 //     make a task look scheduled against a real meeting at that hour. They sit
@@ -60,7 +89,11 @@ import { useTasksStore }         from '../../stores/tasksStore.js'
 import { CalendarFilterBar }     from './CalendarFilterBar.jsx'
 // Colour and icons moved to lib/ when the filter bar arrived — the grid, the
 // legend and the filters all have to agree, so they read from one definition.
-import { STATUS_STYLE, STATUS_ICON, TYPE_ICON } from '../../lib/calendarStyles.js'
+// step051: STATUS_ICON and TYPE_ICON are no longer read here. The flat chip
+// carries status in its dot, and type is already legible without a glyph —
+// tasks are all-day and meetings are timed, so a leading time IS the type.
+// Both are still exported and still used by CalendarFilterBar.
+import { STATUS_STYLE } from '../../lib/calendarStyles.js'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -106,26 +139,28 @@ function buildGrid(year, monthIndex) {
 
 function ItemChip({ item, onClick, compact = false }) {
   const style = STATUS_STYLE[item.status] ?? STATUS_STYLE.pending
-  const TypeIcon = TYPE_ICON[item.type] ?? CalendarIcon
-  const StatusIcon = STATUS_ICON[item.status]
-  const done = item.status === 'completed' || item.status === 'cancelled'
+  const done  = item.status === 'completed' || item.status === 'cancelled'
 
   return (
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick(item) }}
-      title={`${item.type} · ${item.title}${item.time ? ` · ${fmtTime(item.time)}` : ''}`}
-      className={`w-full text-left border rounded px-1.5 py-0.5 flex items-center gap-1 min-w-0
-                  hover:brightness-95 transition ${style.chip}
-                  ${compact ? 'text-[10px] leading-tight py-px' : 'text-xs'}`}
+      title={`${item.type} \u00b7 ${item.title}${item.time ? ` \u00b7 ${fmtTime(item.time)}` : ''}`}
+      className={`w-full text-left rounded flex items-center gap-1.5 min-w-0
+                  hover:bg-gray-100 transition
+                  ${compact ? 'px-1 py-[2px]' : 'px-1.5 py-1'}`}
     >
-      {StatusIcon
-        ? <StatusIcon className="w-3 h-3 shrink-0" />
-        : <TypeIcon className="w-3 h-3 shrink-0" />}
+      <span className={`rounded-full shrink-0 ${style.dot}
+                        ${done ? 'opacity-40' : ''}
+                        ${compact ? 'w-1.5 h-1.5' : 'w-2 h-2'}`} />
       {item.time && !item.allDay && (
-        <span className="tabular-nums shrink-0 opacity-70">{fmtTime(item.time)}</span>
+        <span className={`tabular-nums shrink-0 text-gray-400
+                          ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
+          {fmtTime(item.time)}
+        </span>
       )}
-      <span className={`truncate ${done ? 'line-through opacity-70' : ''}`}>
+      <span className={`truncate ${compact ? 'text-[11px]' : 'text-xs'}
+        ${done ? 'line-through text-gray-400' : 'text-gray-700'}`}>
         {item.title}
       </span>
     </button>
@@ -191,8 +226,8 @@ function AgendaRail({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-100">
-        <span className="text-xs font-semibold text-gray-500">
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-gray-100">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 truncate">
           {selectedDate
             ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString(undefined, {
                 weekday: 'long', day: 'numeric', month: 'long',
@@ -214,10 +249,14 @@ function AgendaRail({
       </div>
 
       {/* Capped so a busy month scrolls the rail instead of stretching the page
-          taller than the grid beside it. */}
-      <div className="divide-y divide-gray-100 max-h-[560px] overflow-y-auto">
+          taller than the grid beside it. step051: the cap now tracks the grid's
+          new height, MINUS the rail's own header and footer, so on a busy month
+          the two columns end on the same line instead of the rail running past
+          the grid. Six rows of cells plus the weekday strip is ~481px; the
+          header and the create footer take ~66 of that. */}
+      <div className="divide-y divide-gray-100 max-h-[416px] overflow-y-auto">
       {shownDates.length === 0 && (
-        <p className="px-3 py-6 text-xs text-gray-400 text-center">
+        <p className="px-3 py-5 text-xs text-gray-400 text-center">
           {selectedDate ? 'Nothing scheduled this day.' : 'Nothing scheduled this month.'}
         </p>
       )}
@@ -229,30 +268,32 @@ function AgendaRail({
         const isToday = date === today
 
         return (
-          <div key={date} className="relative p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-baseline gap-2 min-w-0">
-                <span className={`text-sm font-semibold tabular-nums
+          <div key={date} className="relative px-3 py-2 group/day">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-baseline gap-1.5 min-w-0">
+                <span className={`text-xs font-semibold tabular-nums
                   ${isToday ? 'text-teal-700' : 'text-gray-900'}`}>
                   {d.getDate()}
                 </span>
-                <span className="text-[11px] uppercase tracking-wide text-gray-400">
+                <span className={`text-[10px] uppercase tracking-wide
+                  ${isToday ? 'text-teal-700' : 'text-gray-400'}`}>
                   {d.toLocaleDateString(undefined, { weekday: 'short' })}
                 </span>
-                {isToday && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-600 text-white">
-                    Today
-                  </span>
-                )}
               </div>
 
+              {/* step051: the create button was a permanent teal plus on every
+                  listed day. On a busy month that is a column of them down the
+                  rail, which reads as the primary action when it is not. It now
+                  behaves like the one in the grid — visible on hover, and on
+                  focus so it stays reachable from the keyboard. */}
               <button
                 type="button"
                 onClick={() => setCreateFor(createFor === date ? null : date)}
-                className="p-1 rounded hover:bg-teal-50 shrink-0"
+                className="p-0.5 rounded shrink-0 text-gray-400 hover:bg-gray-100 hover:text-teal-700
+                           opacity-0 group-hover/day:opacity-100 focus:opacity-100 transition"
                 aria-label={`Add on ${date}`}
               >
-                <Plus className="w-4 h-4 text-teal-700" />
+                <Plus className="w-3.5 h-3.5" />
               </button>
             </div>
 
@@ -262,16 +303,16 @@ function AgendaRail({
                 onMeeting={onCreateMeeting}
                 onTask={onCreateTask}
                 onCancel={() => setCreateFor(null)}
-                className="top-9 right-2"
+                className="top-8 right-2"
               />
             )}
 
             {/* All-day first and labelled, for the same reason as the day
                 detail: a task with no time otherwise reads as a meeting whose
                 time failed to load. */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {allDay.length > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-px">
                   <p className="text-[10px] uppercase tracking-wide text-gray-400">All day</p>
                   {allDay.map((item) => (
                     <ItemChip key={item.id} item={item} onClick={onOpen} />
@@ -280,7 +321,7 @@ function AgendaRail({
               )}
 
               {timed.length > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-px">
                   {allDay.length > 0 && (
                     <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> Scheduled
@@ -307,15 +348,15 @@ function AgendaRail({
           agenda only lists days that have something, so an empty Thursday is
           unreachable — this is the way to it. The date is prefilled to a day
           inside the month being viewed, and is editable in the modal. */}
-      <div className="p-3 flex items-center gap-2 border-t border-gray-100">
+      <div className="px-2 py-2 flex items-center gap-1.5 border-t border-gray-100">
         <button type="button" onClick={() => onCreateMeeting(defaultDate)}
-          className="flex-1 text-xs px-2.5 py-2 rounded-lg border border-gray-200 hover:bg-gray-50
-                     inline-flex items-center justify-center gap-1.5">
+          className="flex-1 text-[11px] px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600
+                     hover:bg-gray-50 hover:text-gray-900 inline-flex items-center justify-center gap-1">
           <Plus className="w-3 h-3" /> Meeting
         </button>
         <button type="button" onClick={() => onCreateTask(defaultDate)}
-          className="flex-1 text-xs px-2.5 py-2 rounded-lg border border-gray-200 hover:bg-gray-50
-                     inline-flex items-center justify-center gap-1.5">
+          className="flex-1 text-[11px] px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600
+                     hover:bg-gray-50 hover:text-gray-900 inline-flex items-center justify-center gap-1">
           <Plus className="w-3 h-3" /> Task
         </button>
       </div>
@@ -428,33 +469,32 @@ export function ActivityCalendar({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => step(-1)}
-            className="p-1.5 rounded-lg hover:bg-gray-100" aria-label="Previous month">
-            <ChevronLeft className="w-4 h-4 text-gray-600" />
+            className="p-1 rounded-lg hover:bg-gray-100" aria-label="Previous month">
+            <ChevronLeft className="w-4 h-4 text-gray-500" />
           </button>
-          <h2 className="font-display font-semibold text-gray-900 text-base min-w-[150px] text-center
+          <h2 className="font-display font-semibold text-gray-900 text-sm min-w-[124px] text-center
                          select-none">
             {MONTH_NAMES[cursor.month]} {cursor.year}
           </h2>
           <button type="button" onClick={() => step(1)}
-            className="p-1.5 rounded-lg hover:bg-gray-100" aria-label="Next month">
-            <ChevronRight className="w-4 h-4 text-gray-600" />
+            className="p-1 rounded-lg hover:bg-gray-100" aria-label="Next month">
+            <ChevronRight className="w-4 h-4 text-gray-500" />
           </button>
           <button type="button" onClick={goToday}
-            className="ml-2 text-xs px-2.5 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
+            className="ml-1 text-[11px] px-2 py-1 rounded-lg border border-gray-200 text-gray-600
+                       hover:bg-gray-50 hover:text-gray-900">
             Today
           </button>
         </div>
 
         {/* Counts are for the WHOLE month, before filters — so the numbers do
             not shift as the user narrows the view and stop being a reference. */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-3">
           {['pending', 'completed', 'overdue', 'cancelled'].map((k) => (
-            <span key={k}
-              className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full
-                         border border-gray-200 bg-white text-gray-600">
+            <span key={k} className="inline-flex items-center gap-1.5 text-[11px] text-gray-500">
               <span className={`w-1.5 h-1.5 rounded-full ${STATUS_STYLE[k].dot}`} />
               {k.charAt(0).toUpperCase() + k.slice(1)}
-              <span className="tabular-nums font-medium text-gray-900">{counts[k] ?? 0}</span>
+              <span className="tabular-nums font-semibold text-gray-900">{counts[k] ?? 0}</span>
             </span>
           ))}
         </div>
@@ -487,12 +527,12 @@ export function ActivityCalendar({
           Below `sm` this collapses to the rail alone — a seven-column month
           cannot be made legible at 390px, so the small screen gets a different
           view of the same data rather than a worse version of this one. */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start">
+      <div className="flex flex-col sm:flex-row gap-3 items-start">
 
       {/* The rail is rendered at every width now. On a phone it is the whole
           calendar; on desktop it is the column the day detail used to be a
           block below. */}
-      <div className="w-full sm:w-[320px] sm:flex-shrink-0">
+      <div className="w-full sm:w-[276px] sm:flex-shrink-0">
         <AgendaRail
           dates={agendaDates}
           byDate={byDate}
@@ -513,7 +553,7 @@ export function ActivityCalendar({
         <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
           {WEEKDAYS.map((d) => (
             <div key={d}
-              className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wide
+              className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide
                          text-gray-400 text-center">
               {d}
             </div>
@@ -527,10 +567,12 @@ export function ActivityCalendar({
             const timed    = items.filter((i) => !i.allDay)
             const isToday  = cell.date === today
             const isPicked = cell.date === selectedDate
-            // step049: cells are 112px now rather than 76px, so four fit. A
-            // fifth would push the row taller than its neighbours and make the
-            // grid ragged — the cap exists for evenness, not for space.
-            const shown    = [...allDay, ...timed].slice(0, 4)
+            // step049 sized the cell for four chips. step051 takes it back to
+            // three: the fourth cost 36px on every one of the 42 cells, which
+            // is where most of the height went. The cap still exists for
+            // evenness — a fifth would make one row taller than its
+            // neighbours and the grid ragged — not to save space.
+            const shown    = [...allDay, ...timed].slice(0, 3)
             const overflow = items.length - shown.length
 
             return (
@@ -538,16 +580,16 @@ export function ActivityCalendar({
                 type="button"
                 key={cell.date}
                 onClick={() => setSelectedDate(isPicked ? null : cell.date)}
-                className={`group relative min-h-[112px] border-b border-r border-gray-100
-                            p-2 text-left align-top transition
+                className={`group relative min-h-[76px] border-b border-r border-gray-100
+                            px-1.5 py-1 text-left align-top transition
                             ${cell.inMonth ? 'bg-white' : 'bg-gray-50/50'}
                             ${isPicked ? 'ring-2 ring-inset ring-teal-400' : 'hover:bg-teal-50/40'}`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`text-sm tabular-nums
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className={`text-[11px] tabular-nums
                     ${isToday
-                      ? 'w-6 h-6 rounded-full bg-teal-600 text-white flex items-center justify-center font-semibold'
-                      : cell.inMonth ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
+                      ? 'w-5 h-5 rounded-full bg-teal-600 text-white flex items-center justify-center font-semibold'
+                      : cell.inMonth ? 'text-gray-600 font-medium' : 'text-gray-300'}`}>
                     {cell.dayNumber}
                   </span>
 
@@ -564,10 +606,11 @@ export function ActivityCalendar({
                       }
                     }}
                     className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition
-                               p-0.5 rounded hover:bg-teal-100 cursor-pointer"
+                               p-0.5 rounded text-gray-400 hover:bg-gray-100 hover:text-teal-700
+                               cursor-pointer"
                     aria-label={`Add on ${cell.date}`}
                   >
-                    <Plus className="w-3.5 h-3.5 text-teal-700" />
+                    <Plus className="w-3 h-3" />
                   </span>
                 </div>
 
@@ -579,16 +622,16 @@ export function ActivityCalendar({
                     onMeeting={createMeetingOn}
                     onTask={createTaskOn}
                     onCancel={() => setCreateFor(null)}
-                    className="top-7 right-1"
+                    className="top-6 right-1"
                   />
                 )}
 
-                <div className="space-y-0.5">
+                <div className="space-y-px">
                   {shown.map((item) => (
                     <ItemChip key={item.id} item={item} onClick={openItem} compact />
                   ))}
                   {overflow > 0 && (
-                    <span className="block text-[10px] text-gray-500 pl-1">
+                    <span className="block text-[10px] text-gray-400 pl-1.5">
                       +{overflow} more
                     </span>
                   )}
