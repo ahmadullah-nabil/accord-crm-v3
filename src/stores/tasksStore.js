@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isTaskOverdue } from '../lib/dates.js'
 
 // UI-only state for the Tasks module.
 // All server/data state lives in React Query (useTasks / useTask hooks).
@@ -84,7 +85,13 @@ export const useTasksStore = create((set, get) => ({
         !(t.assignee || '').toLowerCase().includes(q) &&
         !(t.description || '').toLowerCase().includes(q)
       ) return false
-      if (statusFilter   !== 'All' && t.status   !== statusFilter)   return false
+      if (statusFilter === 'Overdue') {
+        // 'Overdue' is not a stored status — nothing writes it. Comparing
+        // t.status against it matched nothing and the quick tab returned an
+        // empty list. Derive it instead; the other statuses stay a plain
+        // equality check because they ARE stored.
+        if (!isTaskOverdue(t)) return false
+      } else if (statusFilter !== 'All' && t.status !== statusFilter) return false
       if (priorityFilter !== 'All' && t.priority !== priorityFilter) return false
       if (assigneeFilter !== 'All' && t.assignee !== assigneeFilter) return false
       return true

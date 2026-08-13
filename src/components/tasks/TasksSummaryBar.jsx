@@ -1,17 +1,18 @@
 import React from 'react'
 import { useTasksStore }           from '../../stores/tasksStore.js'
 import { TASK_STATUSES, STATUS_CONFIG } from '../../lib/tasksData.js'
+import { isTaskOverdue, isDueToday }    from '../../lib/dates.js'
 
 export function TasksSummaryBar({ tasks = [] }) {
   const { statusFilter, setStatusFilter } = useTasksStore()
 
   const total    = tasks.length
-  const overdue  = tasks.filter((t) => t.status === 'Overdue').length
-  const dueToday = tasks.filter((t) => {
-    if (t.status === 'Completed') return false
-    const today = new Date().toISOString().split('T')[0]
-    return t.dueDate === today
-  }).length
+  // Derived, not read from t.status. Nothing writes 'Overdue', so the old
+  // equality check displayed zero regardless of how many tasks were late.
+  const overdue  = tasks.filter(isTaskOverdue).length
+  // isDueToday uses a LOCAL date. The old inline toISOString() returned
+  // yesterday between midnight and 6am in Dhaka.
+  const dueToday = tasks.filter(isDueToday).length
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
@@ -28,7 +29,14 @@ export function TasksSummaryBar({ tasks = [] }) {
 
       {/* Per-status pills */}
       {TASK_STATUSES.map((status) => {
-        const count = tasks.filter((t) => t.status === status).length
+        // TASK_STATUSES still contains 'Overdue' and is left alone here on
+        // purpose — removing it would take the pill off the bar, and an
+        // overdue count is exactly what this row should show. What changes is
+        // where the number comes from: derived for 'Overdue', stored for the
+        // three real statuses.
+        const count = status === 'Overdue'
+          ? overdue
+          : tasks.filter((t) => t.status === status).length
         const cfg   = STATUS_CONFIG[status]
         return (
           <StatPill

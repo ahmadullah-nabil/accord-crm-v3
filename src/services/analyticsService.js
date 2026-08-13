@@ -19,6 +19,7 @@
 //  '90d' → 90 days ago   '1y'  → 365 days ago
 
 import { supabase } from '../lib/supabaseClient.js'
+import { isRowOverdue } from '../lib/dates.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -294,7 +295,10 @@ export async function getTaskStats(range) {
   try {
     const { data, error } = await supabase
       .from('tasks')
-      .select('status, priority, created_at')
+      // due_date is selected because overdue is DERIVED from it. The old query
+      // omitted it and read statusCounts['Overdue'] instead — a value nothing
+      // writes, so the KPI read zero permanently.
+      .select('status, priority, created_at, due_date')
       .gte('created_at', dateFrom)
     if (error) throw error
 
@@ -303,7 +307,7 @@ export async function getTaskStats(range) {
     const priorityCounts  = countBy(rows, (r) => r.priority)
     const total           = rows.length
     const completed       = statusCounts['Completed'] || 0
-    const overdue         = statusCounts['Overdue']   || 0
+    const overdue         = rows.filter(isRowOverdue).length
     const completionRate  = total > 0 ? parseFloat(((completed / total) * 100).toFixed(1)) : 0
 
     // Weekly completion trend over last 8 weeks
@@ -325,11 +329,16 @@ export async function getTaskStats(range) {
     })
 
     return {
+      // ── Why 'Overdue' is not a slice here ──────────────────────────────
+      // These slices must be mutually exclusive and sum to `total`, which is
+      // what TaskAnalyticsCharts divides by for its percentages. An overdue
+      // task is ALSO Todo or In Progress, so including it double-counted —
+      // harmless only while the derived count was stuck at zero. It is
+      // returned as overdueCount below and already has its own KPI tile.
       byStatus: [
         { name: 'Completed',   value: statusCounts['Completed']   || 0, color: '#10b981' },
         { name: 'In Progress', value: statusCounts['In Progress'] || 0, color: '#3b82f6' },
         { name: 'Todo',        value: statusCounts['Todo']        || 0, color: '#94a3b8' },
-        { name: 'Overdue',     value: overdue,                         color: '#f87171' },
       ],
       byPriority: [
         { name: 'Urgent', value: priorityCounts['Urgent'] || 0, color: '#ef4444' },
