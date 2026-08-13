@@ -114,7 +114,14 @@ export function TaskFormModal() {
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4
                     overflow-y-auto">
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md" onClick={close} />
+      {/* step050: this scrim was on Tailwind's fixed neutral ramp, which is not
+          mapped to the CSS custom properties. NOT rewritten to gray-900 — the
+          neutral ramp is INVERTED in dark mode, so gray-900 is near-white there
+          and the scrim would light the page up instead of dimming it. `black`
+          is deliberately not remapped by tailwind.config.js, which is exactly
+          what an overlay wants. The values match the Lead/Contact/Opportunity
+          modals rather than inventing a third scrim. */}
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={close} />
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-card-lg w-full max-w-[560px]

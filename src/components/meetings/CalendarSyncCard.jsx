@@ -16,6 +16,12 @@
 //     because "we cannot know" is honest and "3:00 PM" stated confidently is
 //     not.
 
+// step050: every colour in this file was on the fixed `slate` ramp. This card
+// is the only caller of the calendar sync path and is mounted on both the
+// meeting panel and /meetings/:id, so it was the largest unthemed surface
+// left in the app. Swept onto `gray` — same ramp step, no visual change in
+// light mode, correct in dark mode and under a non-teal accent.
+
 import React from 'react'
 import {
   CalendarPlus, CalendarCheck, CalendarX, AlertTriangle,
@@ -72,18 +78,18 @@ export function CalendarSyncCard({ meeting }) {
   const cancel = () => cancelMutation.mutate({ meetingId: meeting.id })
 
   return (
-    <div className="rounded-lg border border-slate-200 p-4 space-y-3">
+    <div className="rounded-lg border border-gray-200 p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h4 className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
+          <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
             {isSynced
               ? <CalendarCheck className="w-4 h-4 text-emerald-600" />
               : isFailed
                 ? <AlertTriangle className="w-4 h-4 text-rose-600" />
-                : <CalendarPlus className="w-4 h-4 text-slate-400" />}
+                : <CalendarPlus className="w-4 h-4 text-gray-400" />}
             External calendar
           </h4>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-gray-500 mt-0.5">
             {isSynced
               ? `On ${PROVIDER_LABEL[meeting.provider] ?? meeting.provider}`
               : status === 'cancelled'
@@ -95,7 +101,7 @@ export function CalendarSyncCard({ meeting }) {
         {isSynced && meeting.lastSyncedAt && (
           // Shown because one-way sync cannot detect a change made on the
           // provider's side. Age is the only honest signal available.
-          <span className="text-[11px] text-slate-400 shrink-0">
+          <span className="text-[11px] text-gray-400 shrink-0">
             synced {relativeTime(meeting.lastSyncedAt)}
           </span>
         )}
@@ -114,15 +120,15 @@ export function CalendarSyncCard({ meeting }) {
 
       {/* ── Who gets invited ─────────────────────────────────────────────── */}
       {attendees.length > 0 ? (
-        <p className="text-xs text-slate-600 flex items-start gap-1.5">
-          <Users className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-400" />
+        <p className="text-xs text-gray-600 flex items-start gap-1.5">
+          <Users className="w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400" />
           <span>
             {isSynced ? 'Invited: ' : 'Will invite: '}
             {attendees.map((a) => a.name || a.email).join(', ')}
           </span>
         </p>
       ) : (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-gray-500">
           No attendees — this will be added to your own calendar only.
         </p>
       )}
@@ -140,7 +146,7 @@ export function CalendarSyncCard({ meeting }) {
 
       {/* ── Why the button is disabled ───────────────────────────────────── */}
       {!canSync && blockers.length > 0 && (
-        <ul className="text-xs text-slate-500 space-y-0.5">
+        <ul className="text-xs text-gray-500 space-y-0.5">
           {blockers.map((b) => <li key={b}>• {b}</li>)}
         </ul>
       )}
@@ -202,7 +208,7 @@ export function CalendarSyncCard({ meeting }) {
       {/* One-way sync is a design decision, not a limitation to hide. Saying it
           here costs one line and prevents the assumption that the CRM knows
           about changes made in Google or Outlook. */}
-      <p className="text-[11px] text-slate-400 leading-relaxed">
+      <p className="text-[11px] text-gray-400 leading-relaxed">
         Changes made in {PROVIDER_LABEL[meeting.provider] ?? 'your calendar'} do
         not come back to the CRM. Edit here and update to keep them in step.
       </p>

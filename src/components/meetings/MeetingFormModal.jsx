@@ -213,7 +213,14 @@ export function MeetingFormModal() {
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4
                     overflow-y-auto">
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md" onClick={close} />
+      {/* step050: this scrim was on Tailwind's fixed neutral ramp, which is not
+          mapped to the CSS custom properties. NOT rewritten to gray-900 — the
+          neutral ramp is INVERTED in dark mode, so gray-900 is near-white there
+          and the scrim would light the page up instead of dimming it. `black`
+          is deliberately not remapped by tailwind.config.js, which is exactly
+          what an overlay wants. The values match the Lead/Contact/Opportunity
+          modals rather than inventing a third scrim. */}
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={close} />
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-card-lg w-full max-w-[600px]
@@ -376,7 +383,7 @@ export function MeetingFormModal() {
                   <Plus size={14} />
                 </button>
               </div>
-              <p className="mt-1.5 text-xs text-slate-500">
+              <p className="mt-1.5 text-xs text-gray-500">
                 Internal tracking only — participants are not emailed.
               </p>
             </div>
@@ -386,12 +393,12 @@ export function MeetingFormModal() {
                 look alike and behave nothing alike: one is a list, the other
                 puts a message in someone's inbox from the organiser's own
                 address. */}
-            <div className="rounded-lg border border-slate-200 p-3 space-y-3">
+            <div className="rounded-lg border border-gray-200 p-3 space-y-3">
               <div>
                 <label className="label-base flex items-center gap-1.5">
                   <Mail size={13} /> Calendar invitations
                 </label>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-gray-500">
                   These people receive an email invitation when this meeting is
                   added to your calendar.
                 </p>
@@ -419,7 +426,7 @@ export function MeetingFormModal() {
                 </select>
               </Field>
 
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-gray-500">
                 Saving does not send anything. Use “Add to calendar” on the
                 meeting afterwards to create the event and invite these people.
               </p>

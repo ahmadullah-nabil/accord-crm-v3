@@ -18,11 +18,16 @@ import {
 
 /** Chip background/border/text, plus the bare dot used by the legend and the
  *  status filter. Keyed by the calendar's own four statuses. */
+// step050: `completed` and `cancelled` were on the fixed `slate` ramp, which
+// is not mapped to the CSS custom properties. Two of the four calendar
+// statuses therefore stayed light on a dark theme — inside ActivityCalendar
+// and CalendarFilterBar, both of which were otherwise themed. Neutral chrome
+// is the `gray` ramp; rose stays fixed because it is semantic.
 export const STATUS_STYLE = {
   pending:   { chip: 'bg-teal-50 text-teal-800 border-teal-200',      dot: 'bg-teal-500'   },
-  completed: { chip: 'bg-slate-50 text-slate-500 border-slate-200',   dot: 'bg-slate-400'  },
+  completed: { chip: 'bg-gray-50 text-gray-500 border-gray-200',      dot: 'bg-gray-400'   },
   overdue:   { chip: 'bg-rose-50 text-rose-800 border-rose-200',      dot: 'bg-rose-500'   },
-  cancelled: { chip: 'bg-slate-50 text-slate-400 border-slate-200',   dot: 'bg-slate-300'  },
+  cancelled: { chip: 'bg-gray-50 text-gray-400 border-gray-200',      dot: 'bg-gray-300'   },
 }
 
 /** Display labels. The stored/URL form is lowercase; humans get title case. */
