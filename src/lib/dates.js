@@ -79,3 +79,38 @@ export function isDueToday(task) {
   if (task.status === 'Completed') return false
   return task.dueDate === todayLocal()
 }
+
+// ─── The READ side of the same rule ───────────────────────────────────────────
+//
+// step047. step040's sweep was mechanical — "every .toISOString().split('T')[0]
+// is wrong" — and it fixed every WRITE. It could not catch this, because the
+// bug on the read side has no toISOString() in it at all:
+//
+//     new Date('2026-08-13')          → 2026-08-13T00:00:00 UTC
+//     new Date(2026, 7, 13)           → 2026-08-13T00:00:00 LOCAL
+//
+// A bare YYYY-MM-DD string is parsed by the spec as UTC, while every other Date
+// constructor form is local. So `new Date(dueDate)` on a date-only column
+// yields an instant six hours off in Dhaka, and on the wrong side of midnight
+// for any negative-offset timezone — the same class of error as toISOString(),
+// arrived at from the opposite direction and invisible to the same grep.
+//
+// Use these for any date-only column. Timestamps (timestamptz) are unaffected:
+// those carry an offset and new Date() reads them correctly.
+
+/** Parse a YYYY-MM-DD string as LOCAL midnight. Returns null for empty input. */
+export function parseLocalDate(s) {
+  if (!s) return null
+  const [y, m, d] = String(s).slice(0, 10).split('-').map(Number)
+  if (!y || !m || !d) return null
+  return new Date(y, m - 1, d)
+}
+
+/**
+ * Format a YYYY-MM-DD string for display, in the user's locale, without ever
+ * shifting the day.
+ */
+export function formatLocalDate(s, opts = { day: 'numeric', month: 'short', year: '2-digit' }) {
+  const d = parseLocalDate(s)
+  return d ? d.toLocaleDateString('en-GB', opts) : null
+}

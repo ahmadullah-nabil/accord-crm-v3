@@ -1,16 +1,47 @@
-import React from 'react'
-import { Search, SlidersHorizontal, Plus, X, User, AlertCircle, Clock } from 'lucide-react'
-import { useTasksStore }   from '../../stores/tasksStore.js'
-import { useAuthStore }    from '../../stores/authStore.js'
-import { TASK_STATUSES, TASK_PRIORITIES } from '../../lib/tasksData.js'
-import { useAssignableMembers } from '../../hooks/useTeam.js'
+// ─── TasksToolbar ─────────────────────────────────────────────────────────────
+//
+// step047. The three-row card (quick tabs, search row, filter row) becomes one
+// ViewHeader row.
+//
+// EVERY FUNCTIONAL DETAIL IS CARRIED OVER: search and its clear button, the
+// Priority and Assignee selects, the assignee list from useAssignableMembers,
+// Add Task, clearFilters, and the All / Mine quick tabs including the way the
+// active tab is DERIVED from filter state rather than stored separately — two
+// sources for one truth is how a highlighted tab ends up disagreeing with the
+// rows behind it.
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │ THE "UPCOMING" TAB WAS A FAKE CONTROL AND IS REMOVED                    │
+// ├─────────────────────────────────────────────────────────────────────────┤
+// │ QUICK_TABS listed four tabs. applyQuickTab() handled 'mine' and         │
+// │ 'overdue', with 'all' served by the clearFilters() at the top. There    │
+// │ was no branch for 'upcoming' — so pressing it cleared your filters and  │
+// │ did nothing else. And activeQuickTab derived only 'overdue', 'mine' or  │
+// │ 'all', so it could NEVER return 'upcoming': the tab was incapable of    │
+// │ highlighting itself even in principle.                                   │
+// │                                                                          │
+// │ Same class as Leads' Win Rate pill and Opportunities' Exp. Revenue pill:│
+// │ shaped exactly like the working controls beside it, does nothing when   │
+// │ pressed. Removed rather than faked.                                     │
+// │                                                                          │
+// │ It is NOT reimplemented here. "Upcoming" means due within N days and    │
+// │ not completed — a new filter axis, which needs a new store field, a     │
+// │ decision about N, and a decision about whether it composes with the     │
+// │ status chips or replaces them. That is a behaviour change, and burying  │
+// │ one in a UI batch is how it ships unreviewed. Its own batch, if wanted. │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// The Status select is gone from here because the chip row above IS the status
+// filter now — two controls for one filter is one more than can be right.
 
-const QUICK_TABS = [
-  { id: 'all',      label: 'All',      icon: null          },
-  { id: 'mine',     label: 'Mine',     icon: User          },
-  { id: 'overdue',  label: 'Overdue',  icon: AlertCircle   },
-  { id: 'upcoming', label: 'Upcoming', icon: Clock         },
-]
+import React from 'react'
+import { Plus, User } from 'lucide-react'
+import { useTasksStore }           from '../../stores/tasksStore.js'
+import { useAuthStore }            from '../../stores/authStore.js'
+import { TASK_PRIORITIES }         from '../../lib/tasksData.js'
+import { useAssignableMembers }    from '../../hooks/useTeam.js'
+import { ViewHeader }              from '../ui/ViewHeader.jsx'
+import { Segmented, SegButton }    from '../ui/Segmented.jsx'
 
 export function TasksToolbar({ total, filtered }) {
   const {
@@ -22,137 +53,63 @@ export function TasksToolbar({ total, filtered }) {
   } = useTasksStore()
 
   const user = useAuthStore((s) => s.user)
-
-  // Derive active quick tab from current filter state
-  const activeQuickTab = (() => {
-    const myName = user?.name ?? ''
-    if (statusFilter === 'Overdue' && assigneeFilter === myName) return 'overdue'
-    if (statusFilter === 'All'     && assigneeFilter === myName && !searchQuery) return 'mine'
-    return 'all'
-  })()
-
-  const hasFilters =
-    searchQuery || statusFilter !== 'All' || priorityFilter !== 'All' || assigneeFilter !== 'All'
   const { names: assigneeNames } = useAssignableMembers()
 
-  const applyQuickTab = (tabId) => {
-    clearFilters()
-    if (tabId === 'mine') {
-      setAssigneeFilter(user?.name ?? 'All')
-    } else if (tabId === 'overdue') {
-      setAssigneeFilter(user?.name ?? 'All')
-      setStatusFilter('Overdue')
-    }
-    // 'all' — clearFilters() above is sufficient
-  }
+  const myName = user?.name ?? ''
+
+  // Derived from filter state, not stored. Carried over unchanged.
+  const isMine = Boolean(myName) && assigneeFilter === myName
+
+  const hasFilters =
+    Boolean(searchQuery) || statusFilter !== 'All' ||
+    priorityFilter !== 'All' || assigneeFilter !== 'All'
 
   return (
-    <div className="card px-4 py-3 space-y-3">
-      {/* Quick tabs */}
-      <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        {QUICK_TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => applyQuickTab(id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150
-              ${activeQuickTab === id
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-              }
-              ${id === 'overdue' && activeQuickTab !== id ? 'hover:text-red-500' : ''}
-            `}
+    <ViewHeader
+      title="All tasks"
+      count={filtered}
+      total={total}
+      leading={
+        <Segmented>
+          <SegButton active={!isMine} onClick={() => clearFilters()}>
+            All
+          </SegButton>
+          <SegButton
+            active={isMine}
+            onClick={() => { clearFilters(); setAssigneeFilter(myName || 'All') }}
           >
-            {Icon && <Icon size={11} />}
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Row 1: search + count + add */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search
-            size={15}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-          />
-          <input
-            type="text"
-            placeholder="Search by title, assignee, or related contact…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-base pl-9 py-2 text-sm"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X size={13} />
-            </button>
-          )}
-        </div>
-
-        {total !== undefined && (
-          <span className="text-xs text-gray-400 flex-shrink-0 hidden sm:inline">
-            {filtered} of {total}
-          </span>
-        )}
-
-        <button onClick={openAddModal} className="btn-primary py-2 text-sm flex-shrink-0">
-          <Plus size={15} /> Add Task
+            <User size={11} /> Mine
+          </SegButton>
+        </Segmented>
+      }
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: 'Search tasks',
+      }}
+      filters={[
+        {
+          label: 'Priority',
+          value: priorityFilter,
+          onChange: setPriorityFilter,
+          options: TASK_PRIORITIES,
+        },
+        {
+          label: 'Assignee',
+          value: assigneeFilter,
+          onChange: setAssigneeFilter,
+          options: assigneeNames,
+        },
+      ]}
+      hasFilters={hasFilters}
+      onClearFilters={clearFilters}
+      actions={
+        <button onClick={openAddModal} className="btn-primary py-1 text-sm">
+          <Plus size={14} /> Add Task
         </button>
-      </div>
-
-      {/* Row 2: filter selects */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <SlidersHorizontal size={13} className="text-gray-400 flex-shrink-0" />
-
-        <FilterSelect
-          label="Status"
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={TASK_STATUSES}
-        />
-        <FilterSelect
-          label="Priority"
-          value={priorityFilter}
-          onChange={setPriorityFilter}
-          options={TASK_PRIORITIES}
-        />
-        <FilterSelect
-          label="Assignee"
-          value={assigneeFilter}
-          onChange={setAssigneeFilter}
-          options={assigneeNames}
-        />
-
-        {hasFilters && (
-          <button
-            onClick={clearFilters}
-            className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium"
-          >
-            <X size={11} /> Clear
-          </button>
-        )}
-      </div>
-    </div>
+      }
+    />
   )
 }
 
-function FilterSelect({ label, value, onChange, options }) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={`text-xs font-medium rounded-lg px-2.5 py-1.5 border outline-none cursor-pointer
-        transition-all duration-150
-        ${value !== 'All'
-          ? 'bg-teal-50 border-teal-300 text-teal-700'
-          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-        }`}
-    >
-      <option value="All">{label}: All</option>
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
-    </select>
-  )
-}
+export default TasksToolbar

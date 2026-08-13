@@ -2,6 +2,7 @@
 // Data-access layer. Replace these async functions with Supabase calls and the
 // React Query hooks (useTasks.js) require zero changes.
 import { TEAM_MEMBER_NAMES as _TASK_MEMBER_NAMES } from './users.js'
+import { parseLocalDate } from './dates.js'
 
 let _tasks = [
   {
@@ -284,9 +285,16 @@ export const PRIORITY_CONFIG = {
 // importing the wrong one is silent, and only one of them is maintained.
 
 // Helper: days until due (negative = overdue)
+//
+// step047. `new Date(dueDate)` parsed a bare YYYY-MM-DD as UTC midnight while
+// `today` was built local, so the subtraction mixed two different midnights.
+// Math.round hid it inside ±12h — which is why it looked correct in Dhaka
+// (UTC+6) and would have been off by a whole day for anyone further east.
+// Both sides are local now. See the read-side note in lib/dates.js.
 export function daysUntilDue(dueDate) {
-  if (!dueDate) return null
-  const today = new Date(new Date().toDateString())
-  const due   = new Date(dueDate)
+  const due = parseLocalDate(dueDate)
+  if (!due) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
   return Math.round((due - today) / 86400000)
 }

@@ -1,3 +1,18 @@
+// ─── TasksPage ────────────────────────────────────────────────────────────────
+//
+// step047. The page heading block is gone, matching the four modules before it.
+//
+// It was a 36px emerald icon tile, an <h1> reading "Tasks" and a subtitle
+// reading "Track and manage all sales activities" — on a page reached by
+// clicking "Tasks" in the sidebar, under a top bar already reading the same
+// word.
+//
+// Spacing drops from space-y-4 to space-y-2 to match: the chips, the header row
+// and the table are one block, and 16px gutters read as three separate cards.
+//
+// Nothing else changed: same hook, same filters, same panel and modal mounted
+// in the same order.
+
 import React from 'react'
 import { CheckSquare, RefreshCw } from 'lucide-react'
 import { useTasks }           from '../hooks/useTasks.js'
@@ -40,32 +55,16 @@ export function TasksPage() {
 
   return (
     <>
-      <div className="space-y-4 max-w-[1600px]">
-        {/* Page heading */}
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-emerald-50 rounded-xl flex items-center justify-center ring-1 ring-emerald-200">
-            <CheckSquare size={18} className="text-emerald-600" />
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-gray-900 text-xl leading-tight">Tasks</h1>
-            <p className="text-xs text-gray-500">Track and manage all sales activities</p>
-          </div>
-        </div>
-
-        {/* Status summary */}
+      <div className="space-y-2 max-w-[1600px]">
         <TasksSummaryBar tasks={allTasks} />
-
-        {/* Toolbar */}
         <TasksToolbar total={allTasks.length} filtered={filtered.length} />
-
-        {/* Table */}
         <TasksTable tasks={filtered} isLoading={isLoading} />
       </div>
 
-      {/* Detail panel */}
-      <TaskDetailPanel />
-
-      {/* Add / Edit modal */}
+      {/* The panel's record arrows walk THIS array — the rows actually on
+          screen. See the note in TaskDetailPanel about why it is passed in
+          rather than fetched there. */}
+      <TaskDetailPanel records={filtered} />
       <TaskFormModal />
     </>
   )

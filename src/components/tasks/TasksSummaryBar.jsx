@@ -1,85 +1,73 @@
+// ─── TasksSummaryBar ──────────────────────────────────────────────────────────
+//
+// step047. Six KPI cards → one row of chips, matching the four modules before.
+//
+// WHAT WENT AND WHY
+// ─────────────────
+// The old bar was a 6-across grid of ~76px cards with shadows, hover lifts and
+// uppercase micro-labels — around 100px above a table whose job is showing
+// tasks. Same counts, same filter behaviour, no furniture.
+//
+// 'OVERDUE' STAYS IN THE ROW, AND STAYS DERIVED
+// ─────────────────────────────────────────────
+// TASK_STATUSES still contains 'Overdue' and NOTHING WRITES IT — verified
+// against the database, which holds no such row. step040 fixed the count here
+// to derive from isTaskOverdue() rather than compare `status === 'Overdue'`,
+// which read zero forever. That derivation is preserved exactly: the chip's
+// count is derived, the other three are stored equality checks because those
+// statuses ARE stored.
+//
+// The chip is kept rather than dropped because an overdue count is precisely
+// what this row should show, and tasksStore.applyFilters already special-cases
+// 'Overdue' to filter by isTaskOverdue(). Chip and filter agree.
+//
+// 'DUE TODAY' BECOMES TEXT. It was the second line inside the All card, where
+// it competed with the total at 10px. It is a number you read, not a control
+// you press — and isDueToday uses a LOCAL date, which is the whole point.
+
 import React from 'react'
-import { useTasksStore }           from '../../stores/tasksStore.js'
-import { TASK_STATUSES, STATUS_CONFIG } from '../../lib/tasksData.js'
-import { isTaskOverdue, isDueToday }    from '../../lib/dates.js'
+import { useTasksStore }                   from '../../stores/tasksStore.js'
+import { TASK_STATUSES, STATUS_CONFIG }    from '../../lib/tasksData.js'
+import { isTaskOverdue, isDueToday }       from '../../lib/dates.js'
+import { FacetChips }                      from '../ui/FacetChips.jsx'
 
 export function TasksSummaryBar({ tasks = [] }) {
   const { statusFilter, setStatusFilter } = useTasksStore()
 
   const total    = tasks.length
-  // Derived, not read from t.status. Nothing writes 'Overdue', so the old
-  // equality check displayed zero regardless of how many tasks were late.
   const overdue  = tasks.filter(isTaskOverdue).length
-  // isDueToday uses a LOCAL date. The old inline toISOString() returned
-  // yesterday between midnight and 6am in Dhaka.
   const dueToday = tasks.filter(isDueToday).length
 
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-      {/* All tasks pill */}
-      <StatPill
-        label="All Tasks"
-        value={total}
-        sub={`${dueToday} due today`}
-        active={statusFilter === 'All'}
-        onClick={() => setStatusFilter('All')}
-        dotColor="bg-gray-500"
-        urgentSub={dueToday > 0}
-      />
+  const items = [
+    { key: 'All', label: 'All', count: total },
+    ...TASK_STATUSES.map((status) => ({
+      key:      status,
+      label:    status,
+      count:    status === 'Overdue'
+        ? overdue                                             // DERIVED
+        : tasks.filter((t) => t.status === status).length,    // stored
+      dotClass: STATUS_CONFIG[status]?.dot,
+    })),
+  ]
 
-      {/* Per-status pills */}
-      {TASK_STATUSES.map((status) => {
-        // TASK_STATUSES still contains 'Overdue' and is left alone here on
-        // purpose — removing it would take the pill off the bar, and an
-        // overdue count is exactly what this row should show. What changes is
-        // where the number comes from: derived for 'Overdue', stored for the
-        // three real statuses.
-        const count = status === 'Overdue'
-          ? overdue
-          : tasks.filter((t) => t.status === status).length
-        const cfg   = STATUS_CONFIG[status]
-        return (
-          <StatPill
-            key={status}
-            label={status}
-            value={count}
-            sub={status === 'Overdue' && count > 0 ? 'needs attention' : `of ${total}`}
-            active={statusFilter === status}
-            onClick={() => setStatusFilter(statusFilter === status ? 'All' : status)}
-            dotColor={cfg.dot}
-            urgentSub={status === 'Overdue' && count > 0}
-          />
-        )
-      })}
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      <FacetChips items={items} value={statusFilter} onChange={setStatusFilter} />
+      {total > 0 && (
+        <span className="text-xs text-gray-400 flex-shrink-0">
+          <span className={`tnum font-medium ${dueToday > 0 ? 'text-amber-600' : 'text-gray-500'}`}>
+            {dueToday}
+          </span> due today
+          {overdue > 0 && (
+            <>
+              <span className="text-gray-300"> · </span>
+              <span className="tnum font-medium text-red-500">{overdue}</span> overdue
+            </>
+          )}
+        </span>
+      )}
     </div>
   )
 }
 
-function StatPill({ label, value, sub, active, onClick, dotColor, urgentSub }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`text-left rounded-xl px-4 py-3 transition-all duration-200 border
-        ${active
-          ? 'bg-teal-500 text-white border-teal-500 shadow-glow-teal'
-          : 'bg-white border-gray-100 shadow-card hover:shadow-card-md hover:-translate-y-0.5'
-        }`}
-    >
-      <div className="flex items-center gap-1.5 mb-1">
-        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
-        <p className={`text-[10px] font-semibold uppercase tracking-wider truncate
-          ${active ? 'text-teal-100' : 'text-gray-500'}`}>
-          {label}
-        </p>
-      </div>
-      <p className={`font-display font-bold text-lg leading-tight
-        ${active ? 'text-white' : 'text-gray-900'}`}>
-        {value}
-      </p>
-      <p className={`text-[10px] mt-0.5 truncate
-        ${active ? 'text-teal-100' : urgentSub ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
-        {sub}
-      </p>
-    </button>
-  )
-}
+export default TasksSummaryBar
