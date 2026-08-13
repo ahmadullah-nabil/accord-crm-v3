@@ -3,8 +3,18 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuthStore }     from '../stores/authStore.js'
 import { ActivityCalendar } from '../components/dashboard/ActivityCalendar.jsx'
 import { useCalendarFilters } from '../hooks/useCalendarFilters.js'
-import { LeadOverview }    from '../components/dashboard/LeadOverview.jsx'
-import { useLeadOverviewFilter } from '../hooks/useLeadOverviewFilter.js'
+// step052: LeadOverview is no longer mounted. The Today tab is the calendar,
+// and a second widget under it was pushing the month off the fold — which is
+// the whole problem step051/052 exist to fix. The COMPONENT and its hook are
+// both left in the repo, unimported: this is a placement decision, not a
+// verdict on the widget, and unmounting is the reversible half of it. If it is
+// still unmounted in a month, that is the evidence for deleting it.
+//
+// Its ?leadOwner param goes dead with it. Do NOT reuse that name for the
+// calendar's owner filter — they were deliberately separate (the two shared a
+// tab, and one param would have made picking a name under the lead counts
+// silently re-filter the calendar above them). Reusing it now would resurrect
+// that bug the day anyone remounts LeadOverview.
 // Mounted here so clicking a date can CREATE without navigating away — leaving
 // the Dashboard to make a meeting would lose the month you were looking at.
 // Both read their own store, so mounting them twice across pages is safe.
@@ -113,11 +123,6 @@ export function DashboardPage() {
   // has one owner.
   const calendarFilters = useCalendarFilters()
 
-  // Its own param (?leadOwner), not the calendar's ?owner — the two widgets
-  // share a tab, and sharing the param would make picking a name under the
-  // lead counts silently re-filter the calendar above them.
-  const leadFilter = useLeadOverviewFilter()
-
   return (
     <div className="space-y-5 max-w-[1600px]">
       {/* Welcome bar */}
@@ -176,13 +181,6 @@ export function DashboardPage() {
             onSetOwner={calendarFilters.setOwner}
             onClearFilters={calendarFilters.clear}
           />
-          {/* Below the calendar: the month answers "what is happening", this
-              answers "where is the pipeline". Counts only — every stage is a
-              link into the existing Leads page, not a second lead surface.
-              step049: this used to be pushed down the page every time a date
-              was clicked, because the day detail opened above it. The agenda
-              rail absorbed that, so this now holds its position. */}
-          <LeadOverview owner={leadFilter.owner} onSetOwner={leadFilter.setOwner} />
           <MeetingFormModal />
           <TaskFormModal />
         </>

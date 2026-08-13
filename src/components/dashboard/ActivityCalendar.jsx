@@ -68,6 +68,14 @@
 // │                                                                          │
 // │ Type sizes, the six-row grid and every behaviour are unchanged. This is │
 // │ spacing and weight only — no data, no handler and no state was touched. │
+// │                                                                          │
+// │ step052 took the same pass again, harder, after looking at it running:   │
+// │ cells hold TWO items and the day blocks in the rail lost their inner     │
+// │ padding. Two is the honest cap for a month grid at this size — the third │
+// │ was always going to be truncated on a narrow column anyway, and the      │
+// │ rail beside it exists precisely so the grid does not have to be the      │
+// │ place you read a busy day. The grid answers "which days", the rail       │
+// │ answers "what on this day".                                              │
 // └─────────────────────────────────────────────────────────────────────────┘
 //
 // TWO KINDS OF ITEM, RENDERED DIFFERENTLY ON PURPOSE
@@ -148,7 +156,7 @@ function ItemChip({ item, onClick, compact = false }) {
       title={`${item.type} \u00b7 ${item.title}${item.time ? ` \u00b7 ${fmtTime(item.time)}` : ''}`}
       className={`w-full text-left rounded flex items-center gap-1.5 min-w-0
                   hover:bg-gray-100 transition
-                  ${compact ? 'px-1 py-[2px]' : 'px-1.5 py-1'}`}
+                  ${compact ? 'px-1 py-[2px]' : 'px-1.5 py-[3px]'}`}
     >
       <span className={`rounded-full shrink-0 ${style.dot}
                         ${done ? 'opacity-40' : ''}
@@ -226,7 +234,7 @@ function AgendaRail({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-gray-100">
+      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 border-b border-gray-100">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 truncate">
           {selectedDate
             ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString(undefined, {
@@ -252,9 +260,9 @@ function AgendaRail({
           taller than the grid beside it. step051: the cap now tracks the grid's
           new height, MINUS the rail's own header and footer, so on a busy month
           the two columns end on the same line instead of the rail running past
-          the grid. Six rows of cells plus the weekday strip is ~481px; the
-          header and the create footer take ~66 of that. */}
-      <div className="divide-y divide-gray-100 max-h-[416px] overflow-y-auto">
+          the grid. step052: six rows of 56 plus the weekday strip is ~360px,
+          and the rail's header and create footer take ~62 of that. */}
+      <div className="divide-y divide-gray-100 max-h-[298px] overflow-y-auto">
       {shownDates.length === 0 && (
         <p className="px-3 py-5 text-xs text-gray-400 text-center">
           {selectedDate ? 'Nothing scheduled this day.' : 'Nothing scheduled this month.'}
@@ -268,8 +276,8 @@ function AgendaRail({
         const isToday = date === today
 
         return (
-          <div key={date} className="relative px-3 py-2 group/day">
-            <div className="flex items-center justify-between mb-1">
+          <div key={date} className="relative px-2.5 py-1.5 group/day">
+            <div className="flex items-center justify-between mb-0.5">
               <div className="flex items-baseline gap-1.5 min-w-0">
                 <span className={`text-xs font-semibold tabular-nums
                   ${isToday ? 'text-teal-700' : 'text-gray-900'}`}>
@@ -310,10 +318,12 @@ function AgendaRail({
             {/* All-day first and labelled, for the same reason as the day
                 detail: a task with no time otherwise reads as a meeting whose
                 time failed to load. */}
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               {allDay.length > 0 && (
                 <div className="space-y-px">
-                  <p className="text-[10px] uppercase tracking-wide text-gray-400">All day</p>
+                  <p className="text-[9px] uppercase tracking-wide text-gray-400 leading-none mb-0.5">
+                    All day
+                  </p>
                   {allDay.map((item) => (
                     <ItemChip key={item.id} item={item} onClick={onOpen} />
                   ))}
@@ -323,8 +333,9 @@ function AgendaRail({
               {timed.length > 0 && (
                 <div className="space-y-px">
                   {allDay.length > 0 && (
-                    <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> Scheduled
+                    <p className="text-[9px] uppercase tracking-wide text-gray-400 leading-none mb-0.5
+                                  flex items-center gap-1">
+                      <Clock className="w-2.5 h-2.5" /> Scheduled
                     </p>
                   )}
                   {timed.map((item) => (
@@ -348,14 +359,14 @@ function AgendaRail({
           agenda only lists days that have something, so an empty Thursday is
           unreachable — this is the way to it. The date is prefilled to a day
           inside the month being viewed, and is editable in the modal. */}
-      <div className="px-2 py-2 flex items-center gap-1.5 border-t border-gray-100">
+      <div className="px-2 py-1.5 flex items-center gap-1.5 border-t border-gray-100">
         <button type="button" onClick={() => onCreateMeeting(defaultDate)}
-          className="flex-1 text-[11px] px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600
+          className="flex-1 text-[11px] px-2 py-1 rounded-lg border border-gray-200 text-gray-600
                      hover:bg-gray-50 hover:text-gray-900 inline-flex items-center justify-center gap-1">
           <Plus className="w-3 h-3" /> Meeting
         </button>
         <button type="button" onClick={() => onCreateTask(defaultDate)}
-          className="flex-1 text-[11px] px-2 py-1.5 rounded-lg border border-gray-200 text-gray-600
+          className="flex-1 text-[11px] px-2 py-1 rounded-lg border border-gray-200 text-gray-600
                      hover:bg-gray-50 hover:text-gray-900 inline-flex items-center justify-center gap-1">
           <Plus className="w-3 h-3" /> Task
         </button>
@@ -553,7 +564,7 @@ export function ActivityCalendar({
         <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
           {WEEKDAYS.map((d) => (
             <div key={d}
-              className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide
+              className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide
                          text-gray-400 text-center">
               {d}
             </div>
@@ -567,12 +578,13 @@ export function ActivityCalendar({
             const timed    = items.filter((i) => !i.allDay)
             const isToday  = cell.date === today
             const isPicked = cell.date === selectedDate
-            // step049 sized the cell for four chips. step051 takes it back to
-            // three: the fourth cost 36px on every one of the 42 cells, which
-            // is where most of the height went. The cap still exists for
-            // evenness — a fifth would make one row taller than its
-            // neighbours and the grid ragged — not to save space.
-            const shown    = [...allDay, ...timed].slice(0, 3)
+            // step049 sized the cell for four chips, step051 for three,
+            // step052 for two. Every chip past the second costs ~18px on all 42
+            // cells, and the rail beside the grid already reads a full day
+            // properly. The cap still also exists for evenness — one cell
+            // holding more than the rest makes that whole row taller and the
+            // grid ragged.
+            const shown    = [...allDay, ...timed].slice(0, 2)
             const overflow = items.length - shown.length
 
             return (
@@ -580,15 +592,15 @@ export function ActivityCalendar({
                 type="button"
                 key={cell.date}
                 onClick={() => setSelectedDate(isPicked ? null : cell.date)}
-                className={`group relative min-h-[76px] border-b border-r border-gray-100
+                className={`group relative min-h-[56px] border-b border-r border-gray-100
                             px-1.5 py-1 text-left align-top transition
                             ${cell.inMonth ? 'bg-white' : 'bg-gray-50/50'}
                             ${isPicked ? 'ring-2 ring-inset ring-teal-400' : 'hover:bg-teal-50/40'}`}
               >
                 <div className="flex items-center justify-between mb-0.5">
-                  <span className={`text-[11px] tabular-nums
+                  <span className={`text-[11px] tabular-nums leading-none
                     ${isToday
-                      ? 'w-5 h-5 rounded-full bg-teal-600 text-white flex items-center justify-center font-semibold'
+                      ? 'w-[18px] h-[18px] rounded-full bg-teal-600 text-white flex items-center justify-center font-semibold'
                       : cell.inMonth ? 'text-gray-600 font-medium' : 'text-gray-300'}`}>
                     {cell.dayNumber}
                   </span>
