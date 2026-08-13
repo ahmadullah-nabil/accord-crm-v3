@@ -17,6 +17,7 @@ import { DashboardPage } from './pages/DashboardPage.jsx'
 import { LeadsPage }     from './pages/LeadsPage.jsx'
 import { LeadRecordPage } from './pages/LeadRecordPage.jsx'
 import { ContactsPage }  from './pages/ContactsPage.jsx'
+import { ContactRecordPage } from './pages/ContactRecordPage.jsx'
 import { MeetingsPage }  from './pages/MeetingsPage.jsx'
 import { TasksPage }     from './pages/TasksPage.jsx'
 import { OpportunitiesPage } from './pages/OpportunitiesPage.jsx'
@@ -70,6 +71,10 @@ export default function App() {
               dynamic regardless, but the order also reads correctly. */}
           <Route path="/leads/:id" element={<LeadRecordPage />} />
           <Route path="/contacts"  element={<ContactsPage />} />
+          {/* step043 — the second record route. Same ordering rule as
+              /leads/:id: static segment declared first so the file reads
+              the way react-router already ranks it. */}
+          <Route path="/contacts/:id" element={<ContactRecordPage />} />
           <Route path="/meetings"  element={<MeetingsPage />} />
           <Route path="/tasks"     element={<TasksPage />} />
           <Route path="/opportunities" element={<OpportunitiesPage />} />

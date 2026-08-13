@@ -38,7 +38,7 @@ import React from 'react'
 import {
   Mail, Phone, Globe, DollarSign, Calendar, TrendingUp, Tag, Hash,
   User, FileText, Clock, CheckSquare, Paperclip, Activity, Send,
-  Plus, Building2,
+  Building2,
 } from 'lucide-react'
 
 import { useLeadMeetings }   from '../../hooks/useMeetings.js'
@@ -52,6 +52,7 @@ import { Avatar }            from '../ui/Avatar.jsx'
 import { FieldGroup, RecordField } from '../ui/FieldGroup.jsx'
 import { TimelinePanel }     from '../timeline/TimelinePanel.jsx'
 import { AttachmentPanel }   from '../attachments/AttachmentPanel.jsx'
+import { RelatedList, EmptyBlock } from '../ui/RelatedList.jsx'
 
 export const fmtCurrency = (n) =>
   n >= 1_000_000 ? `৳${(n / 1_000_000).toFixed(2)}M`
@@ -315,39 +316,7 @@ export function useLeadTabs(lead, perms = {}) {
 }
 
 // ── Small shared pieces ───────────────────────────────────────────────────────
-
-function RelatedList({ isLoading, items, emptyLabel, onAdd, addLabel, renderItem }) {
-  return (
-    <div className="space-y-2">
-      {onAdd && (
-        <button
-          onClick={onAdd}
-          className="flex items-center gap-1 text-xs font-medium text-teal-700
-                     hover:text-teal-900 transition-colors duration-120"
-        >
-          <Plus size={12} /> {addLabel}
-        </button>
-      )}
-
-      {isLoading ? (
-        <div className="space-y-1.5">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-11 bg-gray-100 rounded-lg animate-pulse" />
-          ))}
-        </div>
-      ) : items.length === 0 ? (
-        <EmptyBlock label={emptyLabel} />
-      ) : (
-        <div className="space-y-1.5">{items.map(renderItem)}</div>
-      )}
-    </div>
-  )
-}
-
-function EmptyBlock({ label }) {
-  return (
-    <div className="px-3 py-6 text-center rounded-lg border border-dashed border-gray-200">
-      <p className="text-xs text-gray-400">{label}</p>
-    </div>
-  )
-}
+//
+// step043: RelatedList and EmptyBlock moved to components/ui/RelatedList.jsx so
+// Contacts (and the three modules after it) render related records identically
+// instead of each carrying a private copy. Markup unchanged.
