@@ -1,77 +1,46 @@
+// ─── ContactsSummaryBar ───────────────────────────────────────────────────────
+//
+// step036. Same filter behaviour, same counts, no cards.
+//
+// The component keeps its name and its props so ContactsPage's import does not
+// change and the diff stays honest about what actually moved: the presentation,
+// not the logic. It still reads typeFilter from the store and still toggles
+// back to 'All' when you click the active chip.
+
 import React from 'react'
-import { useContactsStore }                     from '../../stores/contactsStore.js'
-import { CONTACT_TYPES, TYPE_COLORS }           from '../../lib/contactsData.js'
+import { useContactsStore }              from '../../stores/contactsStore.js'
+import { CONTACT_TYPES, TYPE_COLORS }    from '../../lib/contactsData.js'
+import { FacetChips }                    from '../ui/FacetChips.jsx'
+
+// The old version derived a dot colour by substring-matching the Tailwind class
+// string from TYPE_COLORS ('teal' → bg-teal-500, and so on). That silently fell
+// back to grey for any type whose colour string did not contain one of three
+// hardcoded words. Same approach kept — it is the only source of per-type
+// colour that exists — but the fallback is now explicit rather than incidental.
+function dotFor(type) {
+  const tc = TYPE_COLORS[type] || ''
+  if (tc.includes('teal'))   return 'bg-teal-500'
+  if (tc.includes('blue'))   return 'bg-blue-500'
+  if (tc.includes('purple')) return 'bg-purple-500'
+  if (tc.includes('amber'))  return 'bg-amber-500'
+  if (tc.includes('red'))    return 'bg-red-500'
+  return 'bg-gray-300'
+}
 
 export function ContactsSummaryBar({ contacts = [] }) {
   const { typeFilter, setTypeFilter } = useContactsStore()
 
-  const total  = contacts.length
-  const active = contacts.filter((c) => c.status === 'Active').length
+  const items = [
+    { key: 'All', label: 'All', count: contacts.length },
+    ...CONTACT_TYPES.map((type) => ({
+      key:      type,
+      label:    type,
+      count:    contacts.filter((c) => c.type === type).length,
+      dotClass: dotFor(type),
+    })),
+  ]
 
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-      {/* Total */}
-      <StatPill
-        label="All Contacts"
-        value={total}
-        sub={`${active} active`}
-        active={typeFilter === 'All'}
-        onClick={() => setTypeFilter('All')}
-        colorClass="bg-gray-900 text-white"
-      />
-
-      {/* Per-type pills */}
-      {CONTACT_TYPES.map((type) => {
-        const count = contacts.filter((c) => c.type === type).length
-        const tc = TYPE_COLORS[type] || 'bg-gray-100 text-gray-600'
-        // derive dot color from tc string
-        const dotColor = tc.includes('teal') ? 'bg-teal-500'
-          : tc.includes('blue') ? 'bg-blue-500'
-          : tc.includes('purple') ? 'bg-purple-500'
-          : 'bg-gray-400'
-
-        return (
-          <StatPill
-            key={type}
-            label={type}
-            value={count}
-            sub={`${Math.round((count / (total || 1)) * 100)}%`}
-            active={typeFilter === type}
-            onClick={() => setTypeFilter(typeFilter === type ? 'All' : type)}
-            dotColor={dotColor}
-          />
-        )
-      })}
-    </div>
-  )
+  return <FacetChips items={items} value={typeFilter} onChange={setTypeFilter} />
 }
 
-function StatPill({ label, value, sub, active, onClick, colorClass, dotColor }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`text-left rounded-xl px-4 py-3 transition-all duration-200 border
-        ${active
-          ? 'bg-teal-500 text-white border-teal-500 shadow-glow-teal'
-          : 'bg-white border-gray-100 shadow-card hover:shadow-card-md hover:-translate-y-0.5'
-        }`}
-    >
-      <div className="flex items-center gap-1.5 mb-1">
-        {dotColor && (
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
-        )}
-        <p className={`text-[10px] font-semibold uppercase tracking-wider
-          ${active ? 'text-teal-100' : 'text-gray-500'}`}>
-          {label}
-        </p>
-      </div>
-      <p className={`font-display font-bold text-lg leading-tight
-        ${active ? 'text-white' : 'text-gray-900'}`}>
-        {value}
-      </p>
-      <p className={`text-[10px] mt-0.5 ${active ? 'text-teal-100' : 'text-gray-400'}`}>
-        {sub}
-      </p>
-    </button>
-  )
-}
+export default ContactsSummaryBar

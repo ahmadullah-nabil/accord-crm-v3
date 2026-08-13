@@ -1,13 +1,26 @@
+// ─── ContactsToolbar ──────────────────────────────────────────────────────────
+//
+// step036. The two-row card is now one ViewHeader row.
+//
+// Everything functional is carried over unchanged: the UUID filter on assignee
+// names, the isManager() gate on Import, the ExportButton, the ImportModal and
+// its query invalidation. Only the layout moved.
+//
+// The UUID filter in particular is load-bearing and easy to mistake for
+// defensive noise — it keeps static fallback data out of the assignee dropdown.
+// It is kept exactly as it was.
+
 import React, { useState } from 'react'
-import { Search, SlidersHorizontal, Plus, X, Upload } from 'lucide-react'
-import { useQueryClient }                             from '@tanstack/react-query'
-import { useContactsStore }   from '../../stores/contactsStore.js'
-import { CONTACT_TYPES, CONTACT_STATUSES } from '../../lib/contactsData.js'
-import { useAssignableMembers } from '../../hooks/useTeam.js'
-import { useAuthStore }       from '../../stores/authStore.js'
-import { isManager }          from '../../lib/permissions.js'
-import { ImportModal }        from '../import-export/ImportModal.jsx'
-import { ExportButton }       from '../import-export/ExportButton.jsx'
+import { Plus, Upload } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useContactsStore }                   from '../../stores/contactsStore.js'
+import { CONTACT_TYPES, CONTACT_STATUSES }    from '../../lib/contactsData.js'
+import { useAssignableMembers }               from '../../hooks/useTeam.js'
+import { useAuthStore }                       from '../../stores/authStore.js'
+import { isManager }                          from '../../lib/permissions.js'
+import { ImportModal }                        from '../import-export/ImportModal.jsx'
+import { ExportButton }                       from '../import-export/ExportButton.jsx'
+import { ViewHeader }                         from '../ui/ViewHeader.jsx'
 
 export function ContactsToolbar({ total, filtered }) {
   const {
@@ -33,93 +46,44 @@ export function ContactsToolbar({ total, filtered }) {
   const qc = useQueryClient()
 
   const hasFilters =
-    searchQuery || typeFilter !== 'All' || statusFilter !== 'All' || assigneeFilter !== 'All'
+    Boolean(searchQuery) || typeFilter !== 'All' || statusFilter !== 'All' || assigneeFilter !== 'All'
 
   return (
     <>
-      <div className="card px-4 py-3 space-y-3">
-        {/* Row 1: search + count + add */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search
-              size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-            />
-            <input
-              type="text"
-              placeholder="Search by name, company, email or role…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input-base pl-9 py-2 text-sm"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-
-          {/* Result count */}
-          {total !== undefined && (
-            <span className="text-xs text-gray-400 flex-shrink-0 hidden sm:inline">
-              {filtered} of {total}
-            </span>
-          )}
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+      <ViewHeader
+        title="All contacts"
+        count={filtered}
+        total={total}
+        search={{
+          value: searchQuery,
+          onChange: setSearchQuery,
+          placeholder: 'Search contacts',
+        }}
+        filters={[
+          { label: 'Type',     value: typeFilter,     onChange: setTypeFilter,     options: CONTACT_TYPES },
+          { label: 'Status',   value: statusFilter,   onChange: setStatusFilter,   options: CONTACT_STATUSES },
+          { label: 'Assignee', value: assigneeFilter, onChange: setAssigneeFilter, options: assigneeNames },
+        ]}
+        hasFilters={hasFilters}
+        onClearFilters={clearFilters}
+        actions={
+          <>
             {canImport && (
               <button
                 onClick={() => setShowImport(true)}
-                className="btn-secondary py-2 text-sm flex items-center gap-1.5"
+                className="btn-secondary"
                 title="Import contacts from CSV"
               >
                 <Upload size={14} /> Import
               </button>
             )}
             <ExportButton entityType="contact" />
-            <button onClick={openAddModal} className="btn-primary py-2 text-sm">
-              <Plus size={15} /> Add Contact
+            <button onClick={openAddModal} className="btn-primary">
+              <Plus size={14} /> New contact
             </button>
-          </div>
-        </div>
-
-        {/* Row 2: filter chips */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <SlidersHorizontal size={13} className="text-gray-400 flex-shrink-0" />
-
-          <FilterSelect
-            label="Type"
-            value={typeFilter}
-            onChange={setTypeFilter}
-            options={CONTACT_TYPES}
-          />
-          <FilterSelect
-            label="Status"
-            value={statusFilter}
-            onChange={setStatusFilter}
-            options={CONTACT_STATUSES}
-          />
-          <FilterSelect
-            label="Assignee"
-            value={assigneeFilter}
-            onChange={setAssigneeFilter}
-            options={assigneeNames}
-          />
-
-          {hasFilters && (
-            <button
-              onClick={clearFilters}
-              className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium ml-1"
-            >
-              <X size={11} /> Clear
-            </button>
-          )}
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {showImport && (
         <ImportModal
@@ -135,20 +99,4 @@ export function ContactsToolbar({ total, filtered }) {
   )
 }
 
-function FilterSelect({ label, value, onChange, options }) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={`text-xs font-medium rounded-lg px-2.5 py-1.5 border outline-none cursor-pointer
-        transition-all duration-150
-        ${value !== 'All'
-          ? 'bg-teal-50 border-teal-300 text-teal-700'
-          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-        }`}
-    >
-      <option value="All">{label}: All</option>
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
-    </select>
-  )
-}
+export default ContactsToolbar
