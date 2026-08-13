@@ -17,7 +17,7 @@ import type {
   CalendarEventInput,
   CalendarEventResult,
   AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderAuth,
-  ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
+  ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet, MailboxAuth,
 } from '../types.ts'
 import { IntegrationError } from '../types.ts'
 import { postForm, getJson, expiresAtFrom } from '../http.ts'
@@ -155,7 +155,7 @@ export const microsoftAdapter: ProviderAdapter = {
    * them, and reuses the same builder as Gmail, so there is one body format to
    * reason about instead of two.
    */
-  async sendEmail(auth: ProviderAuth, input: SendEmailInput): Promise<SendEmailResult> {
+  async sendEmail(auth: MailboxAuth, input: SendEmailInput): Promise<SendEmailResult> {
     const { raw, messageId } = buildMimeMessage(input)
 
     const res = await fetch(GRAPH_SEND, {
@@ -262,7 +262,7 @@ export const microsoftAdapter: ProviderAdapter = {
       {
         method: 'POST',
         headers: {
-          Authorization: `${auth.tokenType} ${auth.accessToken}`,
+          Authorization: auth.authorization,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ Comment: 'This meeting has been cancelled.' }),
@@ -275,7 +275,7 @@ export const microsoftAdapter: ProviderAdapter = {
     if (res.status === 403) {
       const del = await fetch(
         `https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(externalEventId)}`,
-        { method: 'DELETE', headers: { Authorization: `${auth.tokenType} ${auth.accessToken}` } },
+        { method: 'DELETE', headers: { Authorization: auth.authorization } },
       )
       return del.ok || del.status === 404
     }
@@ -307,14 +307,14 @@ function graphEventBody(input: CalendarEventInput): Record<string, unknown> {
 }
 
 async function graphFetch(
-  auth: { accessToken: string; tokenType: string },
+  auth: ProviderAuth,
   url: string,
   init: RequestInit,
 ): Promise<Record<string, unknown>> {
   const res = await fetch(url, {
     ...init,
     headers: {
-      Authorization: `${auth.tokenType} ${auth.accessToken}`,
+      Authorization: auth.authorization,
       'Content-Type': 'application/json',
       // Graph accepts naive dateTime + timeZone in the body; this header only
       // governs how it formats times back to us. Asking for UTC keeps the

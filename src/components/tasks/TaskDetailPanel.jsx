@@ -1,12 +1,13 @@
 import React from 'react'
 import {
   X, Calendar, User, Tag, Link2, Pencil, Trash2,
-  CheckCircle2, Circle, Clock, FileText, AlertCircle,
+  CheckCircle2, Circle, Clock, FileText, AlertCircle, Paperclip,
 } from 'lucide-react'
 import { useTasksStore }                            from '../../stores/tasksStore.js'
 import { useTask, useDeleteTask, useToggleTaskComplete } from '../../hooks/useTasks.js'
 import { STATUS_CONFIG, PRIORITY_CONFIG, daysUntilDue } from '../../lib/tasksData.js'
 import { TimelinePanel }                           from '../timeline/TimelinePanel.jsx'
+import { AttachmentPanel }                        from '../attachments/AttachmentPanel.jsx'
 import { Avatar }                                  from '../ui/Avatar.jsx'
 import { Skeleton, SkeletonText }                  from '../ui/Skeleton.jsx'
 
@@ -216,6 +217,11 @@ function TaskPanelContent({ task, onClose, onEdit, onDelete, onToggle, isTogglin
           {task.completedAt && (
             <InfoRow label="Completed" value={task.completedAt} />
           )}
+        </Section>
+
+        {/* ── Files ───────────────────────────────────────────────────────── */}
+        <Section title="Files" icon={Paperclip}>
+          <AttachmentPanel relatedType="task" relatedId={task.id} compact />
         </Section>
 
         {/* ── Unified Timeline ────────────────────────────────────────────── */}

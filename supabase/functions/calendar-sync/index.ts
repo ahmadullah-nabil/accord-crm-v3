@@ -29,7 +29,7 @@
 
 import { requireUser, adminClient } from '../_shared/supabase.ts'
 import { corsHeaders, json, errorResponse } from '../_shared/http.ts'
-import { getTokenForCapability, authHeader } from '../_shared/tokens.ts'
+import { getTokenForCapability, authHeader, type ValidToken } from '../_shared/tokens.ts'
 import { getAdapter } from '../_shared/providers/index.ts'
 import {
   IntegrationError,
@@ -252,22 +252,20 @@ Deno.serve(async (req) => {
  * Build the provider auth envelope.
  *
  * authHeader() is the single place that knows Zoho needs `Zoho-oauthtoken`
- * rather than `Bearer`; splitting its output back apart keeps that knowledge in
- * one file instead of leaking a provider quirk into every call site.
+ * rather than `Bearer`. Its output is now passed through WHOLE.
+ *
+ * It used to be split back apart into { accessToken, tokenType } and cast
+ * `as ProviderAuth` — an object the declared type did not describe. Every
+ * calendar method then reassembled the same header from the pieces, so a
+ * quirk that lives in one file was being re-derived in nine places, and the
+ * cast is what let that compile. ProviderAuth now carries the finished header
+ * and nothing else, so there is nothing left to split and nothing to cast.
  */
-function toProviderAuth(token: {
-  accessToken: string
-  tokenType: string
-  apiDomain: string | null
-  provider: string
-}): ProviderAuth {
-  const header = authHeader(token as never)
-  const scheme = header.split(' ')[0]
+function toProviderAuth(token: ValidToken): ProviderAuth {
   return {
-    accessToken: token.accessToken,
-    tokenType:   scheme,
-    apiDomain:   token.apiDomain,
-  } as ProviderAuth
+    authorization: authHeader(token),
+    apiDomain:     token.apiDomain,
+  }
 }
 
 /**

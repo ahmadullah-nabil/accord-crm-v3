@@ -26,7 +26,7 @@ import type {
   CalendarEventInput,
   CalendarEventResult,
   AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderAuth,
-  ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
+  ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet, MailboxAuth,
 } from '../types.ts'
 import { IntegrationError } from '../types.ts'
 import { postForm, getJson, expiresAtFrom } from '../http.ts'
@@ -163,7 +163,7 @@ export const googleAdapter: ProviderAdapter = {
     return { accountId: me.sub, email: me.email ?? '', name: me.name ?? '' }
   },
 
-  async sendEmail(auth: ProviderAuth, input: SendEmailInput): Promise<SendEmailResult> {
+  async sendEmail(auth: MailboxAuth, input: SendEmailInput): Promise<SendEmailResult> {
     const { raw, messageId } = buildMimeMessage(input)
 
     // threadId groups the message with earlier ones in the SENDER's mailbox.
@@ -296,7 +296,7 @@ export const googleAdapter: ProviderAdapter = {
   async cancelEvent(auth, externalEventId): Promise<boolean> {
     const res = await fetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(externalEventId)}?sendUpdates=all`,
-      { method: 'DELETE', headers: { Authorization: `${auth.tokenType} ${auth.accessToken}` } },
+      { method: 'DELETE', headers: { Authorization: auth.authorization } },
     )
     // 410 Gone / 404 Not Found: already deleted. The goal is "not on the
     // calendar", which is satisfied. Reporting failure here would strand the
@@ -339,14 +339,14 @@ function googleEventBody(input: CalendarEventInput): Record<string, unknown> {
 }
 
 async function googleFetch(
-  auth: { accessToken: string; tokenType: string },
+  auth: ProviderAuth,
   url: string,
   init: RequestInit,
 ): Promise<Record<string, unknown>> {
   const res = await fetch(url, {
     ...init,
     headers: {
-      Authorization: `${auth.tokenType} ${auth.accessToken}`,
+      Authorization: auth.authorization,
       'Content-Type': 'application/json',
     },
   })

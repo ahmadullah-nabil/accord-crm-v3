@@ -42,7 +42,7 @@ import { corsHeaders, json, errorResponse } from '../_shared/http.ts'
 import { getTokenForCapability, authHeader } from '../_shared/tokens.ts'
 import { getAdapter } from '../_shared/providers/index.ts'
 import { htmlToText, generateMessageId } from '../_shared/mime.ts'
-import { IntegrationError, type ProviderAuth, type SendEmailInput } from '../_shared/types.ts'
+import { IntegrationError, type MailboxAuth, type SendEmailInput } from '../_shared/types.ts'
 import {
   parseRecipients, applyVariables, sanitizeHtml, appendSignature,
   replySubject, assertWithinLimits,
@@ -254,7 +254,10 @@ Deno.serve(async (req) => {
     await linkAttachments(admin, logRow.id, attached.ids)
 
     // ── Send ──────────────────────────────────────────────────────────────────
-    const auth: ProviderAuth = {
+    // MailboxAuth, not ProviderAuth: sending needs to know WHICH mailbox, and
+    // Zoho resolves a validated fromAddress from accountEmail. Calendar calls
+    // take the narrower ProviderAuth, which has no mailbox identity to give.
+    const auth: MailboxAuth = {
       authorization: authHeader(token),   // knows Zoho needs its own scheme
       apiDomain:     token.apiDomain,
       accountEmail:  account.account_email,

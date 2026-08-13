@@ -2,7 +2,7 @@ import React from 'react'
 import {
   X, Calendar, Clock, MapPin, Users, Link2,
   FileText, Tag, Pencil, Trash2, ExternalLink, Hash,
-  Plus, CheckCircle2, Circle, AlertCircle,
+  Plus, CheckCircle2, Circle, AlertCircle, Paperclip,
 } from 'lucide-react'
 import { useMeetingsStore }                   from '../../stores/meetingsStore.js'
 import { useMeeting, useDeleteMeeting }       from '../../hooks/useMeetings.js'
@@ -14,6 +14,7 @@ import { useMeetingPermissions }              from '../../hooks/usePermissions.j
 import { Avatar }                             from '../ui/Avatar.jsx'
 import { Skeleton, SkeletonText }             from '../ui/Skeleton.jsx'
 import { TimelinePanel }                      from '../timeline/TimelinePanel.jsx'
+import { AttachmentPanel }                   from '../attachments/AttachmentPanel.jsx'
 import { useRoleByName }                      from '../../hooks/useTeam.js'
 import { CalendarSyncCard } from './CalendarSyncCard.jsx'
 
@@ -346,6 +347,11 @@ function MeetingPanelContent({meeting,organizerRole,linkedTasks,tasksLoading,onC
           )}
         </SectionWithAction>
 
+
+        {/* ── Files ────────────────────────────────────────────────────────── */}
+        <Section title="Files" icon={Paperclip}>
+          <AttachmentPanel relatedType="meeting" relatedId={meeting.id} compact />
+        </Section>
 
         {/* ── Unified Timeline ─────────────────────────────────────────────── */}
         {meeting && (

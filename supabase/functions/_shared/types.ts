@@ -181,6 +181,31 @@ export interface ProviderAuth {
   authorization: string
   /** Zoho's data-centre API host. Null for Google and Microsoft. */
   apiDomain: string | null
+}
+
+/**
+ * ProviderAuth plus the identity of the mailbox being sent from.
+ *
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │ WHY THIS IS A SEPARATE TYPE                                             │
+ * ├─────────────────────────────────────────────────────────────────────────┤
+ * │ It used to be one. ProviderAuth carried accountEmail and accountName,   │
+ * │ and calendar-sync — which has a token but no mailbox identity — built   │
+ * │ a DIFFERENT object and cast it `as ProviderAuth` to get past the        │
+ * │ compiler. Two runtime shapes wore one type name, and the calendar       │
+ * │ adapters read fields the declared type did not have.                     │
+ * │                                                                          │
+ * │ It worked, because the cast happened to supply what those methods read. │
+ * │ But the type system was silenced at exactly the point where the two     │
+ * │ shapes diverged, which is where the next change would have landed.      │
+ * │                                                                          │
+ * │ Split as it should have been: sending mail needs to know WHICH mailbox  │
+ * │ (Zoho resolves a validated fromAddress from it); creating an event does │
+ * │ not. Now a calendar method cannot compile against mailbox identity it   │
+ * │ was never given, and nothing has to be cast.                             │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ */
+export interface MailboxAuth extends ProviderAuth {
   /** The connected mailbox address (integration_accounts.account_email). */
   accountEmail: string
   accountName: string
@@ -228,7 +253,7 @@ export interface ProviderAdapter {
    *
    * Only present on adapters whose `capabilities` include 'email'.
    */
-  sendEmail(auth: ProviderAuth, input: SendEmailInput): Promise<SendEmailResult>
+  sendEmail(auth: MailboxAuth, input: SendEmailInput): Promise<SendEmailResult>
 
   // ── Calendar (Phase 2) ────────────────────────────────────────────────────
   //

@@ -1,7 +1,7 @@
 import React from 'react'
 import {
   X, Building2, Mail, Phone, DollarSign,
-  TrendingUp, Calendar, Tag, Pencil, Trash2, User,
+  TrendingUp, Calendar, Tag, Pencil, Trash2, User, Paperclip,
 } from 'lucide-react'
 import { useOpportunitiesStore, OPP_STAGE_COLORS } from '../../stores/opportunitiesStore.js'
 import { useOpportunity, useDeleteOpportunity } from '../../hooks/useOpportunities.js'
@@ -10,6 +10,7 @@ import { useRoleByName }              from '../../hooks/useTeam.js'
 import { useMeetingsStore }    from '../../stores/meetingsStore.js'
 import { useTasksStore }       from '../../stores/tasksStore.js'
 import { TimelinePanel }           from '../timeline/TimelinePanel.jsx'
+import { AttachmentPanel }        from '../attachments/AttachmentPanel.jsx'
 import { Avatar }              from '../ui/Avatar.jsx'
 import { Skeleton }            from '../ui/Skeleton.jsx'
 import {
@@ -193,6 +194,11 @@ export function OppDetailPanel() {
                   </div>
                 </Section>
               )}
+
+              {/* ── Files ──────────────────────────────────────────────── */}
+              <Section title="Files" icon={Paperclip}>
+                <AttachmentPanel relatedType="opportunity" relatedId={opp.id} compact />
+              </Section>
 
               {/* ── Unified Timeline ───────────────────────────────────── */}
               <TimelinePanel

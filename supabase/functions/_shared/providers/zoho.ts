@@ -24,7 +24,7 @@ import type {
   CalendarEventInput,
   CalendarEventResult,
   AuthUrlParams, CallbackContext, Capability, EmailAttachment, ProviderAdapter,
-  ProviderAuth, ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
+  ProviderAuth, ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet, MailboxAuth,
 } from '../types.ts'
 import { IntegrationError } from '../types.ts'
 import { postForm, expiresAtFrom } from '../http.ts'
@@ -227,11 +227,16 @@ export const zohoAdapter: ProviderAdapter = {
     // Ordered candidates. The first that yields an identity wins. Each is
     // logged with status and body so a failure is diagnosable from the function
     // log alone rather than needing another round trip.
-    const candidates: Array<{ url: string; kind: 'mail' | 'userinfo' }> = [
+    // The annotation is on the ARRAY LITERAL, not on the filtered result.
+    // Contextual typing does not survive a .filter() call: annotating the
+    // variable leaves the literal to infer `kind: string` on its own, which no
+    // longer matches the union. Two statements, and the compiler can see it.
+    const allCandidates: Array<{ url: string; kind: 'mail' | 'userinfo' }> = [
       { url: `${mailHost}/api/accounts`,        kind: 'mail' },
       { url: `${apiDomain ?? ''}/mail/v1/accounts`, kind: 'mail' },
       { url: `${accountsHost}/oauth/user/info`, kind: 'userinfo' },
-    ].filter((c) => !c.url.startsWith('/'))
+    ]
+    const candidates = allCandidates.filter((c) => !c.url.startsWith('/'))
 
     const attempts: string[] = []
 
@@ -324,7 +329,7 @@ export const zohoAdapter: ProviderAdapter = {
    * │    see resolveMailAccount() below.                                    │
    * └───────────────────────────────────────────────────────────────────────┘
    */
-  async sendEmail(auth: ProviderAuth, input: SendEmailInput): Promise<SendEmailResult> {
+  async sendEmail(auth: MailboxAuth, input: SendEmailInput): Promise<SendEmailResult> {
     const mailHost = zohoMailFromApiDomain(auth.apiDomain)
     const account  = await resolveMailAccount(auth, mailHost)
 
@@ -484,7 +489,7 @@ export const zohoAdapter: ProviderAdapter = {
     try {
       const res = await fetch(url, {
         method: 'DELETE',
-        headers: { Authorization: `Zoho-oauthtoken ${auth.accessToken}` },
+        headers: { Authorization: auth.authorization },
       })
       const body = await res.text()
       console.log(`[zoho] cancelEvent ${url} → ${res.status} ${body.slice(0, 200)}`)
@@ -517,16 +522,16 @@ const calendarUidCache = new Map<string, { uid: string; at: number }>()
 const CAL_UID_TTL_MS = 10 * 60 * 1000
 
 async function resolveCalendarUid(
-  auth: { accessToken: string; apiDomain?: string | null },
+  auth: ProviderAuth,
   host: string,
 ): Promise<string> {
-  const key = `${host}:${auth.accessToken.slice(-16)}`
+  const key = `${host}:${auth.authorization.slice(-16)}`
   const hit = calendarUidCache.get(key)
   if (hit && Date.now() - hit.at < CAL_UID_TTL_MS) return hit.uid
 
   const url = `${host}/api/v1/calendars`
   const res = await fetch(url, {
-    headers: { Authorization: `Zoho-oauthtoken ${auth.accessToken}`, Accept: 'application/json' },
+    headers: { Authorization: auth.authorization, Accept: 'application/json' },
   })
   const text = await res.text()
   console.log(`[zoho] calendars ${url} → ${res.status} ${text.slice(0, 400)}`)
@@ -603,7 +608,7 @@ function zohoEventData(input: CalendarEventInput): Record<string, unknown> {
 }
 
 async function zohoCalendarFetch(
-  auth: { accessToken: string },
+  auth: ProviderAuth,
   url: string,
   method: string,
   form: Record<string, string>,
@@ -612,7 +617,7 @@ async function zohoCalendarFetch(
   const res = await fetch(url, {
     method,
     headers: {
-      Authorization: `Zoho-oauthtoken ${auth.accessToken}`,
+      Authorization: auth.authorization,
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
     },
@@ -695,7 +700,7 @@ const MAIL_ACCOUNT_TTL_MS = 10 * 60 * 1000
 const mailAccountCache = new Map<string, { value: ZohoMailAccount; expiresAt: number }>()
 
 async function resolveMailAccount(
-  auth: ProviderAuth,
+  auth: MailboxAuth,
   mailHost: string,
 ): Promise<ZohoMailAccount> {
   const key = `${mailHost}|${auth.accountEmail.toLowerCase()}`

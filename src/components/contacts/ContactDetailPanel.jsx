@@ -22,6 +22,7 @@ import { useRoleByName }                    from '../../hooks/useTeam.js'
 import { Avatar }                           from '../ui/Avatar.jsx'
 import { Skeleton, SkeletonText }           from '../ui/Skeleton.jsx'
 import { TimelinePanel }                    from '../timeline/TimelinePanel.jsx'
+import { AttachmentPanel }                 from '../attachments/AttachmentPanel.jsx'
 import { EmailComposer }                    from '../email/EmailComposer.jsx'
 
 export function ContactDetailPanel() {
@@ -312,6 +313,11 @@ export function ContactDetailPanel() {
                     ))}
                   </div>
                 )}
+              </Section>
+
+              {/* Files */}
+              <Section title="Files">
+                <AttachmentPanel relatedType="contact" relatedId={contact.id} compact />
               </Section>
 
               {/* Timeline */}
