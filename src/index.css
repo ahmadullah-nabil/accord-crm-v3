@@ -6,91 +6,148 @@
    ACCORD CRM — THEME TOKENS
    ═══════════════════════════════════════════════════════════════════════════
 
-   Every colour token is a space-separated RGB channel triplet so Tailwind's
-   `<alpha-value>` slot keeps working (bg-white/70, ring-teal-400/20, …).
+   step033 retunes the VALUES in this file. The MECHANISM is unchanged: every
+   colour token is still a space-separated RGB channel triplet so Tailwind's
+   `<alpha-value>` slot keeps working (bg-white/70, ring-teal-400/20, …), and
+   every appearance attribute below is still written by src/lib/appearance.js.
+
+   No component file was edited to produce the new look. That is deliberate and
+   worth preserving: anything that can be expressed here costs one file to
+   change and cannot drift per module.
 
    Layers, in cascade order:
      :root                      light palette + Accord teal accent (defaults)
      html.dark                  dark palette — inverts the neutral ramp
      html[data-accent="…"]      swaps the accent ramp only
      html[data-font-size="…"]   root font size (rem cascade)
-     html[data-density="…"]     table row padding
+     html[data-density="…"]     table cell padding, vertical AND horizontal
      html[data-row-hover="off"] disables table row hover tint
      html[data-animations="off"] reduces transitions/animations
 
-   All five attributes are written by src/lib/appearance.js.
+   ── WHAT CHANGED IN step033 ───────────────────────────────────────────────
+   1. Neutral ramp moved off Tailwind's blue-tinted defaults to a near-neutral
+      ramp with a trace of warmth. Blue-grey chrome around teal accent content
+      reads as two competing hues; neutral chrome lets the accent be the only
+      colour in the frame that means anything.
+   2. Elevation flattened. Cards were separated from the page by shadow; they
+      are now separated by a hairline border. Shadow is reserved for things
+      that genuinely float above the page — dropdowns, popovers, modals.
+   3. Density tightened, including horizontal padding, which the old rule did
+      not cover.
+   4. Sidebar retuned from navy to neutral-dark. It stays DARK — see the note
+      on the sidebar tokens below before changing that.
+   5. Focus is now visible everywhere, on the accent, keyboard-only.
+   6. Motion shortened from 200ms to 120ms in the component classes below.
+      A dense table wants response, not choreography.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Neutral ramp — light ────────────────────────────────────────────── */
-  --c-white:    255 255 255;
-  --c-gray-50:  249 250 251;
-  --c-gray-100: 243 244 246;
-  --c-gray-200: 229 231 235;
-  --c-gray-300: 209 213 219;
-  --c-gray-400: 156 163 175;
-  --c-gray-500: 107 114 128;
-  --c-gray-600: 75 85 99;
-  --c-gray-700: 55 65 81;
-  --c-gray-800: 31 41 55;
-  --c-gray-900: 17 24 39;
-  --c-gray-950: 3 7 18;
+  /* ── Neutral ramp — light ──────────────────────────────────────────────
+     Near-neutral with a trace of warmth (R ≥ G ≥ B by 1–2 points). Against
+     the cool teal accent this reads calm rather than muddy, and it separates
+     the product from the blue-grey default every Tailwind admin panel ships
+     with. Surfaces are 50/100, borders 200/300, text 500→900. */
+  --c-white:    255 255 255;   /* card / input / dropdown surface */
+  --c-gray-50:  250 250 249;   /* page background                 */
+  --c-gray-100: 244 244 242;   /* hairline dividers               */
+  --c-gray-200: 231 231 228;   /* borders                         */
+  --c-gray-300: 214 214 210;
+  --c-gray-400: 163 163 158;   /* placeholder, disabled text      */
+  --c-gray-500: 115 115 110;   /* secondary text                  */
+  --c-gray-600: 87 87 83;
+  --c-gray-700: 64 64 61;      /* body text                       */
+  --c-gray-800: 41 41 39;
+  --c-gray-900: 24 24 23;      /* primary text, headings          */
+  --c-gray-950: 12 12 11;
 
-  /* ── Sidebar — deliberately dark in BOTH themes (Accord brand rail) ──── */
-  --c-sidebar-bg:     15 25 35;
-  --c-sidebar-hover:  26 37 53;
-  --c-sidebar-active: 30 45 64;
-  --c-sidebar-border: 30 45 64;
-  --c-sidebar-text:   143 163 184;
-  --c-sidebar-muted:  74 99 122;
+  /* ── Sidebar — deliberately dark in BOTH themes (Accord brand rail) ────
+     Retuned from navy to neutral-dark so the rail belongs to the same colour
+     system as the rest of the app.
 
-  /* ── Elevation ───────────────────────────────────────────────────────── */
-  --shadow-card:    0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.06);
-  --shadow-card-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.07);
-  --shadow-card-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+     BEFORE FLIPPING THIS TO A LIGHT RAIL: Sidebar.jsx and AuthLayout.jsx both
+     hardcode <Logo on="dark" />, which serves the WHITE wordmark. A light rail
+     with those lines unchanged renders a white logo on a light background —
+     an invisible brand mark, and exactly the kind of thing that survives to
+     production because nothing errors. The rail is therefore staying dark
+     until the shell batch, where Sidebar.jsx is being rewritten anyway and can
+     select the logo variant from the resolved theme. */
+  --c-sidebar-bg:     23 23 22;
+  --c-sidebar-hover:  38 38 36;
+  --c-sidebar-active: 46 46 44;
+  --c-sidebar-border: 40 40 38;
+  --c-sidebar-text:   161 161 155;
+  --c-sidebar-muted:  115 115 110;
 
-  /* ── Root font size (Small / Medium / Large) ─────────────────────────── */
-  --app-font-size: 16px;
+  /* ── Elevation ─────────────────────────────────────────────────────────
+     Three steps with real jobs, not three sizes of the same idea:
+       card     resting surfaces — almost nothing; the border does the work
+       card-md  things that open over content: dropdowns, popovers, tooltips
+       card-lg  things that take over: modals, side panels, command palette */
+  --shadow-card:    0 1px 2px 0 rgba(16,15,14,0.04);
+  --shadow-card-md: 0 4px 12px -2px rgba(16,15,14,0.10), 0 2px 4px -2px rgba(16,15,14,0.06);
+  --shadow-card-lg: 0 16px 32px -8px rgba(16,15,14,0.18), 0 4px 8px -4px rgba(16,15,14,0.08);
 
-  /* ── Table density ───────────────────────────────────────────────────── */
-  --table-cell-py: 0.75rem;
+  /* ── Root font size (Small / Medium / Large) ───────────────────────────
+     15px default, down from 16px. Tailwind's scale is rem-based, so this one
+     value tightens every size in the app proportionally — the single biggest
+     density lever available without touching a component. */
+  --app-font-size: 15px;
+
+  /* ── Table density ─────────────────────────────────────────────────────
+     Horizontal padding is now tokenised too. The old rule set only py, so
+     rows got shorter while staying as wide as before — half a density
+     control. */
+  --table-cell-py: 0.5rem;
+  --table-cell-px: 0.75rem;
+
+  /* ── Focus ring ────────────────────────────────────────────────────────
+     One definition, used by the global :focus-visible rule below. */
+  --focus-ring: rgb(var(--c-accent-500) / 0.9);
 }
 
 /* ── Dark palette ──────────────────────────────────────────────────────────
    The neutral ramp is INVERTED: gray-50 becomes the darkest surface and
    gray-900 the lightest text. This works because the codebase uses the ramp
    consistently — bg-gray-50/100/200 for surfaces, text-gray-400…900 for text —
-   so one remap flips cards, borders, inputs, tables and empty states at once. */
+   so one remap flips cards, borders, inputs, tables and empty states at once.
+
+   Retuned in step033 to match the light side: neutral, not blue. */
 html.dark {
-  --c-white:    24 30 38;      /* card / input / dropdown surface */
-  --c-gray-50:  15 20 26;      /* page background, subtle fills   */
-  --c-gray-100: 38 46 56;      /* hairline borders                */
-  --c-gray-200: 48 57 69;      /* borders                         */
-  --c-gray-300: 74 86 101;
-  --c-gray-400: 122 136 153;
-  --c-gray-500: 154 167 182;
-  --c-gray-600: 178 190 203;
-  --c-gray-700: 205 214 224;
-  --c-gray-800: 226 232 240;
-  --c-gray-900: 241 245 249;   /* primary text                    */
-  --c-gray-950: 248 250 252;
+  --c-white:    26 26 25;      /* card / input / dropdown surface */
+  --c-gray-50:  18 18 17;      /* page background, subtle fills   */
+  --c-gray-100: 38 38 36;      /* hairline dividers               */
+  --c-gray-200: 51 51 48;      /* borders                         */
+  --c-gray-300: 74 74 70;
+  --c-gray-400: 122 122 116;
+  --c-gray-500: 150 150 144;
+  --c-gray-600: 176 176 170;
+  --c-gray-700: 202 202 197;
+  --c-gray-800: 226 226 222;
+  --c-gray-900: 242 242 240;   /* primary text                    */
+  --c-gray-950: 250 250 249;
 
-  --c-sidebar-bg:     11 17 24;
-  --c-sidebar-hover:  24 33 46;
-  --c-sidebar-active: 32 44 60;
-  --c-sidebar-border: 34 44 58;
+  --c-sidebar-bg:     15 15 14;
+  --c-sidebar-hover:  33 33 31;
+  --c-sidebar-active: 43 43 41;
+  --c-sidebar-border: 36 36 34;
 
-  --shadow-card:    0 1px 3px 0 rgba(0,0,0,0.5), 0 1px 2px -1px rgba(0,0,0,0.45);
-  --shadow-card-md: 0 4px 6px -1px rgba(0,0,0,0.55), 0 2px 4px -2px rgba(0,0,0,0.5);
-  --shadow-card-lg: 0 10px 15px -3px rgba(0,0,0,0.6), 0 4px 6px -4px rgba(0,0,0,0.5);
+  /* Shadow does almost no work on a dark surface — the eye reads the border
+     instead. Kept shallow so dropdowns do not sit in a black smudge. */
+  --shadow-card:    0 1px 2px 0 rgba(0,0,0,0.40);
+  --shadow-card-md: 0 4px 12px -2px rgba(0,0,0,0.55), 0 2px 4px -2px rgba(0,0,0,0.40);
+  --shadow-card-lg: 0 16px 32px -8px rgba(0,0,0,0.65), 0 4px 8px -4px rgba(0,0,0,0.45);
 
   color-scheme: dark;   /* native scrollbars, form controls, date pickers */
 }
 
 /* ═══ ACCENT RAMPS ═════════════════════════════════════════════════════════
-   Mapped onto Tailwind's `teal` scale, which the whole codebase already uses.
-   Accord Teal is the default and needs no attribute.
-   The official logo SVG is an external asset and is never recoloured. */
+   Unchanged in step033. Mapped onto Tailwind's `teal` scale, which the whole
+   codebase already uses. Accord Teal is the default and needs no attribute.
+   The official logo SVG is an external asset and is never recoloured.
+
+   The accent is now the ONLY saturated colour in the chrome, so it carries
+   meaning: primary action, current selection, focus, active nav. Do not spend
+   it on decoration. */
 
 :root,
 html[data-accent="teal"] {
@@ -156,23 +213,42 @@ html.dark[data-accent="orange"] { --c-accent-500: 251 146 60;  --c-accent-600: 2
 
 /* ═══ FONT SIZE ════════════════════════════════════════════════════════════
    Tailwind sizes are rem-based, so changing the root size scales the whole
-   application proportionally — no per-component work. */
-html[data-font-size="small"]  { --app-font-size: 14px; }
-html[data-font-size="medium"] { --app-font-size: 16px; }
-html[data-font-size="large"]  { --app-font-size: 18px; }
+   application proportionally — no per-component work.
+
+   All three steps drop 1px in step033. "Medium" is now 15px, which is the
+   size the density work is tuned against; 16px users who preferred the old
+   feel land on "large". */
+html[data-font-size="small"]  { --app-font-size: 13px; }
+html[data-font-size="medium"] { --app-font-size: 15px; }
+html[data-font-size="large"]  { --app-font-size: 17px; }
 
 /* ═══ TABLE DENSITY ════════════════════════════════════════════════════════
-   Applied globally to every data table. The six table components each use
+   Applied globally to every data table. The table components each use
    `px-4 py-3` on th/td; these rules out-specify that utility (0,1,2 vs 0,1,0)
-   without !important, so no table component needed editing. */
-html[data-density="compact"]     { --table-cell-py: 0.375rem; }
-html[data-density="comfortable"] { --table-cell-py: 0.75rem; }
-html[data-density="spacious"]    { --table-cell-py: 1.125rem; }
+   without !important, so no table component needs editing.
+
+   Values tightened in step033 and horizontal padding added. At 15px root and
+   "comfortable", a row lands near 34px — dense enough to see a working set of
+   leads without scrolling, loose enough to hit a row on a laptop trackpad. */
+html[data-density="compact"]     { --table-cell-py: 0.3125rem; --table-cell-px: 0.625rem; }
+html[data-density="comfortable"] { --table-cell-py: 0.5rem;    --table-cell-px: 0.75rem;  }
+html[data-density="spacious"]    { --table-cell-py: 0.875rem;  --table-cell-px: 1rem;     }
 
 html[data-density] table th,
 html[data-density] table td {
   padding-top:    var(--table-cell-py);
   padding-bottom: var(--table-cell-py);
+  padding-left:   var(--table-cell-px);
+  padding-right:  var(--table-cell-px);
+}
+
+/* Numbers in a table must line up column-wise. Tabular figures are an
+   OpenType feature of the UI face, so this costs nothing and fixes every
+   amount, count and date column in the app at once. Applies to table cells
+   only — proportional figures stay correct in running text. */
+table th,
+table td {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ═══ TABLE ROW HOVER ══════════════════════════════════════════════════════ */
@@ -215,13 +291,29 @@ html[data-animations="off"] *:not(.animate-spin)::after {
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
     /* Drives the Small / Medium / Large appearance setting */
-    font-size: var(--app-font-size, 16px);
+    font-size: var(--app-font-size, 15px);
   }
 
   body {
     @apply bg-gray-50 text-gray-900 font-sans;
     font-feature-settings: "rlig" 1, "calt" 1;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    transition: background-color 0.12s ease, color 0.12s ease;
+  }
+
+  /* ── Focus ─────────────────────────────────────────────────────────────
+     A CRM this dense is faster from the keyboard, which is only true if the
+     user can see where they are. :focus-visible means mouse users never see
+     a ring, so this costs nothing visually and makes tab navigation usable.
+     Set here rather than per-component so no primitive can forget it. */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+    border-radius: 0.25rem;
+  }
+
+  /* Elements that draw their own focus treatment opt out. */
+  .focus-custom:focus-visible {
+    outline: none;
   }
 
   ::-webkit-scrollbar {
@@ -243,63 +335,78 @@ html[data-animations="off"] *:not(.animate-spin)::after {
 }
 
 @layer components {
-  .glass {
-    @apply bg-white/70 backdrop-blur-md border border-gray-100/60;
-  }
+  /* `.glass` and `.glass-dark` were defined here and used by nothing in src/.
+     Removed in step033 rather than carried forward — frosted panels are not
+     part of the direction, and dead CSS invites someone to reach for it. */
 
-  .glass-dark {
-    background: rgba(15, 25, 35, 0.85);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255,255,255,0.06);
-  }
-
+  /* ── Surfaces ──────────────────────────────────────────────────────────
+     A card is now defined by its edge, not its shadow. This is the single
+     change that most moves the app away from the floating-panel look:
+     `.card` is used across every module, so all of them flatten together. */
   .card {
-    @apply bg-white rounded-xl border border-gray-100 shadow-card;
+    @apply bg-white rounded-xl border border-gray-200 shadow-card;
   }
 
-  .card-hover {
-    @apply card transition-all duration-200 hover:shadow-card-md hover:-translate-y-0.5;
-  }
+  /* `.card-hover` was also defined here and also used by nothing — the six
+     SummaryBar components build their hover state inline instead. Removed for
+     the same reason as `.glass`.
 
+     Their inline `hover:-translate-y-0.5` therefore SURVIVES this batch: it
+     lives in component files, which step033 does not touch. It dies when
+     those components are rebuilt on the table primitive. Files carrying it:
+     Opp/Tasks/Meetings/Notifications/Leads/Contacts SummaryBar,
+     LeadsKanban, OpportunitiesKanban. */
+
+  /* ── Buttons ───────────────────────────────────────────────────────────
+     Tighter radius, no active scale bounce, no glow. Height comes from the
+     rem cascade, so these shrink with the font-size setting. */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-600
-           text-white font-medium text-sm rounded-xl transition-all duration-200
-           shadow-sm hover:shadow-glow-teal active:scale-[0.98] disabled:opacity-50
-           disabled:cursor-not-allowed disabled:hover:bg-teal-500 disabled:hover:shadow-sm;
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-teal-600 hover:bg-teal-700
+           text-white font-medium text-sm rounded-lg transition-colors duration-120
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-teal-600;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50
-           text-gray-700 font-medium text-sm rounded-xl border border-gray-200
-           transition-all duration-200 shadow-sm active:scale-[0.98]
+    @apply inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-white hover:bg-gray-100
+           text-gray-700 font-medium text-sm rounded-lg border border-gray-200
+           transition-colors duration-120
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 px-3 py-2 text-gray-600
-           hover:text-gray-900 hover:bg-gray-100 font-medium text-sm rounded-xl
-           transition-all duration-200 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 px-2.5 py-1.5 text-gray-600
+           hover:text-gray-900 hover:bg-gray-100 font-medium text-sm rounded-lg
+           transition-colors duration-120;
   }
 
+  /* ── Inputs ────────────────────────────────────────────────────────────
+     The ring is gone in favour of a border that changes colour plus the
+     global focus outline. Two focus treatments stacked on one field read as
+     a halo. */
   .input-base {
-    @apply w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-sm
+    @apply w-full px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-sm
            text-gray-900 placeholder-gray-400 outline-none
-           transition-all duration-200
-           focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20
+           transition-colors duration-120
+           focus:border-teal-500
            disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed;
   }
 
   .label-base {
-    @apply block text-sm font-medium text-gray-700 mb-1.5;
+    @apply block text-xs font-medium text-gray-500 mb-1;
   }
 
+  /* ── Badges ────────────────────────────────────────────────────────────
+     Squared off from a pill to a chip. Pills read as marketing; chips read as
+     data, and they sit correctly inside a dense table cell. */
   .badge {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium;
   }
 
+  /* ── Sidebar navigation ────────────────────────────────────────────────
+     Retuned only. The rail is rebuilt in the shell batch. */
   .nav-item {
-    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
-           text-sidebar-text transition-all duration-200 cursor-pointer
+    @apply flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-sm font-medium
+           text-sidebar-text transition-colors duration-120 cursor-pointer
            hover:bg-sidebar-hover hover:text-white;
   }
 
@@ -308,13 +415,20 @@ html[data-animations="off"] *:not(.animate-spin)::after {
   }
 
   .skeleton {
-    @apply animate-pulse bg-gray-200 rounded;
+    @apply animate-pulse bg-gray-200 rounded-md;
   }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  /* Tabular figures on demand, for numbers outside a <table> — KPI tiles,
+     summary bars, anything that has to align across rows or update in place
+     without the layout jittering. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
   }
 
   .scrollbar-hide {

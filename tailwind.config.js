@@ -21,6 +21,19 @@
 // the whole codebase; its VALUES follow the user's accent preference. Accord
 // teal remains the default. The official logo is an external SVG asset and is
 // never affected by any of this.
+//
+// ── step033 ────────────────────────────────────────────────────────────────
+// The same trick is now applied to RADIUS and TYPE. Both are referenced by
+// name throughout the codebase (`rounded-xl` alone appears 211 times,
+// `rounded-lg` 102, `font-display` across a dozen components), so redefining
+// what those names mean re-skins every call site at once and no component file
+// is edited.
+//
+// This is why the scale below defines the FULL radius ladder rather than only
+// the three keys that were here before. Tailwind's built-in `lg` is 0.5rem; if
+// only `xl` were tightened, `rounded-lg` would end up LARGER than `rounded-xl`
+// and the two would swap places in 300-odd places. Keep this ladder monotonic
+// if you retune it again.
 const ramp = (name) => ({
   50:  `rgb(var(--c-${name}-50) / <alpha-value>)`,
   100: `rgb(var(--c-${name}-100) / <alpha-value>)`,
@@ -61,25 +74,65 @@ export default {
           muted:  'rgb(var(--c-sidebar-muted) / <alpha-value>)',
         },
       },
+      // ── Type ───────────────────────────────────────────────────────────
+      // DM Sans + Syne out, Inter family in.
+      //
+      // Syne is a display face with a lot of personality. It was doing that
+      // job well on a marketing-shaped dashboard; on a screen that is mostly
+      // table it competes with the data. `display` is remapped rather than
+      // removed so the dozen components using `font-display` keep working and
+      // simply go quiet.
+      //
+      // Inter Tight on headings gives them a slightly narrower, engineered
+      // set against the body face — enough separation to structure a record
+      // page without introducing a second voice. Inter is listed immediately
+      // after it, so if Inter Tight ever fails to load the fallback is the
+      // right weight and width rather than a system serif.
+      //
+      // Inter is chosen for one boring, decisive reason: it holds up at 13px
+      // in a table cell, and it has real tabular figures, which is what makes
+      // a currency column line up. src/index.css turns those on for every
+      // th/td.
       fontFamily: {
-        sans: ['DM Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        display: ['Syne', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+        sans:    ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Inter Tight', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono:    ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
+      // ── Elevation ──────────────────────────────────────────────────────
+      // Values live in src/index.css so they can differ per theme.
+      // `glow-teal` is kept as a KEY because .btn-primary referenced it and
+      // removing the key would break any component still naming it, but it no
+      // longer glows — it resolves to a plain hairline. Delete the key once
+      // grep shows no `shadow-glow-teal` left in src/.
       boxShadow: {
         'card':    'var(--shadow-card)',
         'card-md': 'var(--shadow-card-md)',
         'card-lg': 'var(--shadow-card-lg)',
-        'glow-teal': '0 0 20px rgb(var(--c-accent-500) / 0.25)',
+        'glow-teal': 'var(--shadow-card)',
       },
+      // ── Radius ─────────────────────────────────────────────────────────
+      // The whole ladder, tightened and kept monotonic. `xl` is the workhorse
+      // (211 uses) and lands at 8px: enough to look drawn rather than cut,
+      // small enough to sit inside a 34px table row without looking like a
+      // lozenge. `full` is untouched — avatars and status dots stay round.
       borderRadius: {
-        'xl':  '0.75rem',
-        '2xl': '1rem',
-        '3xl': '1.5rem',
+        'sm':  '0.1875rem',   //  3px
+        DEFAULT: '0.25rem',   //  4px
+        'md':  '0.3125rem',   //  5px
+        'lg':  '0.375rem',    //  6px
+        'xl':  '0.5rem',      //  8px  ← dominant
+        '2xl': '0.625rem',    // 10px
+        '3xl': '0.75rem',     // 12px
+      },
+      // 120ms is the house transition: fast enough to feel like a direct
+      // response, slow enough not to flicker. Registered as a scale value so
+      // `duration-120` works both in components and inside @apply.
+      transitionDuration: {
+        '120': '120ms',
       },
       animation: {
-        'fade-in':    'fadeIn 0.3s ease-out',
-        'slide-in':   'slideIn 0.3s ease-out',
+        'fade-in':    'fadeIn 0.12s ease-out',
+        'slide-in':   'slideIn 0.12s ease-out',
         'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
       },
       keyframes: {
