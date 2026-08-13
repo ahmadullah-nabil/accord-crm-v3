@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import {
   X, Calendar, Clock, MapPin, Users, Link2,
-  FileText, Tag, Plus, Trash2, Mail,
+  FileText, Tag, Plus, Trash2, Mail, AlertCircle,
 } from 'lucide-react'
 import { useMeetingsStore }                               from '../../stores/meetingsStore.js'
 import { useMeeting, useCreateMeeting, useUpdateMeeting } from '../../hooks/useMeetings.js'
@@ -106,6 +106,10 @@ export function MeetingFormModal() {
       }
       setErrors({})
       setParticipantInput('')
+      // A failure from the last time this modal was open must not greet the
+      // next meeting. React Query keeps mutation state until it is reset.
+      createMutation.reset()
+      updateMutation.reset()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, isEdit, existingMeeting?.id])
@@ -150,6 +154,28 @@ export function MeetingFormModal() {
   }
 
   const isPending = createMutation.isPending || updateMutation.isPending
+
+  // ── Why a save failed ───────────────────────────────────────────────────────
+  //
+  // Until step037 this modal rendered field validation only and dropped the
+  // mutation error on the floor. A rejected INSERT left the modal open, the
+  // button re-enabled and NOTHING on screen — indistinguishable from a dead
+  // button. That cost an afternoon of DevTools archaeology on a 400 that had
+  // named its own cause all along.
+  //
+  // Both layers are shown deliberately. throwClassified() rewrites `message`
+  // into something a user can act on, but the column and constraint that
+  // actually failed survive only on `originalError`. The friendly line is for
+  // the user; the detail line is what makes the next failure a one-minute fix
+  // instead of an afternoon.
+  const failure = createMutation.error || updateMutation.error
+  const rawError = failure?.originalError
+  const rawDetail = failure
+    ? [rawError?.message, rawError?.details, rawError?.hint]
+        .filter(Boolean)
+        .join(' · ')
+    : ''
+  const rawCode = rawError?.code ?? ''
 
   const setField = (field) => (e) => {
     const val = e.target.value
@@ -209,6 +235,27 @@ export function MeetingFormModal() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+            {/* ── Save failure ───────────────────────────────────────────────
+                First child of the scroll container so it is visible without
+                scrolling — an error message below the fold is an error message
+                nobody reads. */}
+            {failure && (
+              <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-red-50
+                              border border-red-100 text-red-700 text-sm animate-fade-in">
+                <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                <div className="min-w-0 space-y-1">
+                  <p className="font-medium">
+                    {failure.message || 'The meeting was not saved.'}
+                  </p>
+                  {rawDetail && (
+                    <p className="text-xs text-red-600/90 break-words">
+                      {rawDetail}{rawCode ? ` (${rawCode})` : ''}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Title */}
             <Field label="Meeting Title" error={errors.title} required>
