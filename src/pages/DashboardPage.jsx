@@ -35,6 +35,20 @@
 // │ needed on either — there is no tab left to hide behind, so they run on   │
 // │ the only view there is.                                                  │
 // │                                                                          │
+// │ step055 — THE PAGE IS A FIXED-HEIGHT COLUMN, NOT A STACK.               │
+// │ step054 sized the four bands so they would add up to less than a        │
+// │ viewport. They did on my arithmetic and did not on the actual machine:  │
+// │ a bookmarks bar and page zoom together cost more than every pixel the   │
+// │ density passes saved, and no fixed set of heights survives both.        │
+// │                                                                          │
+// │ So nothing here is sized to fit any more. The page is `h-full flex      │
+// │ flex-col`, the three chrome bands are `shrink-0`, and the CALENDAR is   │
+// │ the one band that flexes — it absorbs whatever is left and scrolls      │
+// │ inside itself. On a short window the month gets shorter; the window      │
+// │ never scrolls. AppLayout passes the height down (step055 there too).     │
+// │                                                                          │
+// │ Recent deals is capped and scrolls its own rows for the same reason.     │
+// │                                                                          │
 // │ THE FIGURES ARE THE ONES THE SERVICE ACTUALLY RETURNS. getKpiSummary     │
 // │ has no "open deals" and no "won this month" — it has pipelineValue,      │
 // │ activeLeads, dealsWon and totalRevenue over a fixed 30-day range. Those  │
@@ -77,14 +91,14 @@ const FIGURES = [
  *  decoration claiming to be data. */
 function FigureStrip({ data, isLoading }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
       {FIGURES.map((f) => {
         const entry = data?.[f.key]
         return (
           <div key={f.key}
-            className="rounded-xl border border-gray-200 bg-white px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wide text-gray-400">{f.label}</p>
-            <p className="font-display font-semibold text-gray-900 text-lg leading-tight tabular-nums">
+            className="rounded-xl border border-gray-200 bg-white px-3 py-1.5">
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 leading-none">{f.label}</p>
+            <p className="font-display font-semibold text-gray-900 text-base leading-snug tabular-nums">
               {isLoading || !entry
                 ? <span className="text-gray-300">—</span>
                 : f.money ? money(entry.value) : Number(entry.value ?? 0)}
@@ -106,13 +120,13 @@ function PipelineStrip({ data, isLoading, onOpenStage }) {
   const total  = stages.reduce((sum, s) => sum + Number(s.count ?? 0), 0)
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white px-3 py-2
-                    flex items-center gap-2 flex-wrap">
+    <div className="rounded-xl border border-gray-200 bg-white px-3 py-1
+                    flex items-center gap-1 flex-wrap shrink-0">
       <span className="text-[10px] uppercase tracking-wide text-gray-400 mr-1">Leads</span>
       {isLoading && <span className="text-xs text-gray-400">Loading…</span>}
       {!isLoading && stages.map((s) => (
         <button key={s.stage} type="button" onClick={() => onOpenStage(s.stage)}
-          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg
+          className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg
                      hover:bg-gray-50 transition">
           <span className="w-1.5 h-1.5 rounded-full shrink-0"
                 style={{ backgroundColor: s.color }} />
@@ -143,8 +157,9 @@ function RecentDeals({ rows, isLoading, onOpen }) {
     .slice(0, 5)
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-100">
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shrink-0
+                    flex flex-col max-h-[168px]">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-100 shrink-0">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
           Recent deals
         </span>
@@ -164,6 +179,7 @@ function RecentDeals({ rows, isLoading, onOpen }) {
       )}
 
       {!isLoading && recent.length > 0 && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
         <table className="w-full">
           <tbody className="divide-y divide-gray-100">
             {recent.map((o) => (
@@ -190,6 +206,7 @@ function RecentDeals({ rows, isLoading, onOpen }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   )
@@ -223,15 +240,12 @@ export function DashboardPage() {
   const opps     = useOpportunities()
 
   return (
-    <div className="space-y-3 max-w-[1600px]">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="font-display font-bold text-gray-900 text-lg leading-tight">
-            {user?.name ? `Welcome back, ${user.name.split(' ')[0]}` : 'Dashboard'}
-          </h1>
-          <p className="text-[11px] text-gray-500">What is happening this month</p>
-        </div>
-      </div>
+    <div className="flex flex-col min-h-0 h-full gap-2 max-w-[1600px]">
+      {/* One line. The subtitle said what the calendar below it already shows,
+          and a second line of greeting is 20px the month grid does not get. */}
+      <h1 className="font-display font-bold text-gray-900 text-base leading-tight shrink-0">
+        {user?.name ? `Welcome back, ${user.name.split(' ')[0]}` : 'Dashboard'}
+      </h1>
 
       <FigureStrip data={kpi.data} isLoading={kpi.isLoading} />
 
@@ -243,6 +257,9 @@ export function DashboardPage() {
         onOpenStage={openStage}
       />
 
+      {/* The one band that flexes. Everything above and below it is fixed, so
+          this is where a short window is absorbed. */}
+      <div className="flex-1 min-h-0">
       <ActivityCalendar
         filters={calendarFilters.filters}
         activeFilterCount={calendarFilters.activeCount}
@@ -251,6 +268,7 @@ export function DashboardPage() {
         onSetOwner={calendarFilters.setOwner}
         onClearFilters={calendarFilters.clear}
       />
+      </div>
 
       <RecentDeals
         rows={opps.data}

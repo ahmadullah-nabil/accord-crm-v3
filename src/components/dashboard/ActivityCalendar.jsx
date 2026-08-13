@@ -87,6 +87,18 @@
 // │ it, and the rail switches to that day and offers its own +. One create   │
 // │ path instead of two, and the empty-Thursday case still works.            │
 // │                                                                          │
+// │ step055 — THE CALENDAR NO LONGER HAS A HEIGHT OF ITS OWN.               │
+// │ Every pass up to here picked a number (112 → 76 → 56 → 40) and hoped it │
+// │ added up to less than a viewport. It cannot: browser chrome, bookmark   │
+// │ bars and page zoom all move the target, and a bookmark bar plus 125%    │
+// │ zoom costs more than every pixel step052 saved. So the component now    │
+// │ FILLS whatever height its parent gives it — the month grid uses         │
+// │ `grid-rows-6` at `h-full`, so rows share the space that is left, and    │
+// │ the agenda rail scrolls inside its own column instead of at a fixed     │
+// │ cap. The page stops scrolling at any zoom; the calendar just gets       │
+// │ shorter. A floor is kept on the rows so it degrades to a scroll rather  │
+// │ than to unreadable slivers on a very short window.                       │
+// │                                                                          │
 // │ Superseded by the above, kept because it explains the earlier numbers:   │
 // │ step052 took the same pass again, harder, after looking at it running:   │
 // │ cells hold TWO items and the day blocks in the rail lost their inner     │
@@ -251,8 +263,10 @@ function AgendaRail({
   const shownDates = selectedDate ? [selectedDate] : dates
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 border-b border-gray-100">
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden
+                    flex flex-col min-h-0 h-full">
+      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 border-b border-gray-100
+                      shrink-0">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 truncate">
           {selectedDate
             ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString(undefined, {
@@ -276,13 +290,11 @@ function AgendaRail({
 
       {/* Capped so a busy month scrolls the rail instead of stretching the page
           taller than the grid beside it. step051: the cap now tracks the grid's
-          new height. step053 INVERTS which column sets the height: the dot grid
-          is ~262px, and matching the rail to it would leave the surface that
-          actually carries titles and times showing three days. The rail is the
-          taller column now and the grid sits at the top of it (`self-start`).
-          The cap is here so a 25-day month scrolls the rail rather than
-          stretching the page. */}
-      <div className="divide-y divide-gray-100 max-h-[340px] overflow-y-auto">
+          new height. step055 removes the cap entirely: the rail is a flex
+          column that takes what is left between its own header and footer and
+          scrolls there. No number to keep in sync with the grid, and no way
+          for it to push the page taller than the window. */}
+      <div className="divide-y divide-gray-100 flex-1 min-h-0 overflow-y-auto">
       {shownDates.length === 0 && (
         <p className="px-3 py-5 text-xs text-gray-400 text-center">
           {selectedDate ? 'Nothing scheduled this day.' : 'Nothing scheduled this month.'}
@@ -379,7 +391,7 @@ function AgendaRail({
           agenda only lists days that have something, so an empty Thursday is
           unreachable — this is the way to it. The date is prefilled to a day
           inside the month being viewed, and is editable in the modal. */}
-      <div className="px-2 py-1.5 flex items-center gap-1.5 border-t border-gray-100">
+      <div className="px-2 py-1.5 flex items-center gap-1.5 border-t border-gray-100 shrink-0">
         <button type="button" onClick={() => onCreateMeeting(defaultDate)}
           className="flex-1 text-[11px] px-2 py-1 rounded-lg border border-gray-200 text-gray-600
                      hover:bg-gray-50 hover:text-gray-900 inline-flex items-center justify-center gap-1">
@@ -495,7 +507,7 @@ export function ActivityCalendar({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col min-h-0 h-full gap-2">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
@@ -558,12 +570,12 @@ export function ActivityCalendar({
           Below `sm` this collapses to the rail alone — a seven-column month
           cannot be made legible at 390px, so the small screen gets a different
           view of the same data rather than a worse version of this one. */}
-      <div className="flex flex-col sm:flex-row gap-3 items-start">
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch flex-1 min-h-0">
 
       {/* The rail is rendered at every width now. On a phone it is the whole
           calendar; on desktop it is the column the day detail used to be a
           block below. */}
-      <div className="w-full sm:w-[276px] sm:flex-shrink-0">
+      <div className="w-full sm:w-[276px] sm:flex-shrink-0 min-h-0 sm:h-full">
         <AgendaRail
           dates={agendaDates}
           byDate={byDate}
@@ -579,9 +591,9 @@ export function ActivityCalendar({
         />
       </div>
 
-      <div className="hidden sm:block flex-1 min-w-0 rounded-xl border border-gray-200
-                      overflow-hidden bg-white self-start">
-        <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
+      <div className="hidden sm:flex flex-col flex-1 min-w-0 rounded-xl border border-gray-200
+                      overflow-hidden bg-white min-h-0">
+        <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50 shrink-0">
           {WEEKDAYS.map((d) => (
             <div key={d}
               className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide
@@ -591,7 +603,10 @@ export function ActivityCalendar({
           ))}
         </div>
 
-        <div className="grid grid-cols-7">
+        {/* grid-rows-6 + flex-1: the six rows divide whatever height is left
+            rather than adding up to a fixed one. min-h keeps a floor so a very
+            short window scrolls this column instead of flattening the rows. */}
+        <div className="grid grid-cols-7 grid-rows-6 flex-1 min-h-0 overflow-y-auto">
           {grid.map((cell) => {
             const items    = byDate[cell.date] ?? []
             const isToday  = cell.date === today
@@ -611,7 +626,7 @@ export function ActivityCalendar({
                 title={items.length
                   ? `${items.length} item${items.length === 1 ? '' : 's'}`
                   : undefined}
-                className={`relative h-10 flex flex-col items-center justify-center gap-1
+                className={`relative h-full min-h-[34px] flex flex-col items-center justify-center gap-1
                             border-b border-r border-gray-100 transition
                             ${cell.inMonth ? 'bg-white' : 'bg-gray-50/50'}
                             ${isPicked ? 'ring-1 ring-inset ring-teal-500 bg-teal-50/40'

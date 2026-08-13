@@ -89,7 +89,19 @@ export function AppLayout() {
             drawing their own cards and headers inside this, so the outer gutter
             is the one place a few px show up on every screen at once. */}
         <main className="flex-1 overflow-y-auto">
-          <div className="p-3 lg:p-4 animate-fade-in">
+          {/* step055: `h-full` added. <main> already has a definite height (it
+              is flex-1 inside an h-screen shell), but this wrapper did not
+              pass it on, so a page could not ask for "the height that is
+              left" — every page had to be a stack that happened to fit, and
+              the Dashboard did not fit. With this, a page opting in with
+              `h-full flex flex-col min-h-0` fills the viewport exactly and
+              scrolls its own inner region instead of the window.
+
+              SAFE FOR EVERY OTHER PAGE: this div has no background, border or
+              overflow of its own. A page taller than the viewport overflows it
+              exactly as before and <main> still scrolls; a shorter page just
+              sits in a taller invisible box. */}
+          <div className="p-3 lg:p-4 animate-fade-in h-full">
             <Outlet />
           </div>
         </main>
