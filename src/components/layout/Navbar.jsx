@@ -1,3 +1,23 @@
+// ─── Navbar (top bar) ─────────────────────────────────────────────────────────
+//
+// step034. Same file, same export, much less of it.
+//
+// WHAT CHANGED
+// ────────────
+// • h-16 → h-12. The old bar spent 64px on a title the sidebar already
+//   highlights and a subtitle nobody reads twice.
+// • The subtitle is gone for the same reason.
+// • <GlobalSearch /> is no longer mounted here. Search moved into the command
+//   menu so there is one search surface rather than two.
+//
+//   NOTE ON THE SHORTCUT: GlobalSearch.jsx binds Ctrl/Cmd+K itself. That
+//   listener was registered on mount and torn down on unmount, so dropping the
+//   component here removes the binding with it — the command menu's own
+//   handler is not competing with a second one. GlobalSearch.jsx is now
+//   unimported and can be deleted once the module batches land; it is left on
+//   disk rather than removed because the batch script copies files and does not
+//   delete them.
+
 import React, { useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
@@ -8,52 +28,54 @@ import {
   Settings,
   Menu,
   X,
+  Search,
 } from 'lucide-react'
-import { useAuthStore }    from '../../stores/authStore.js'
-import { useUiStore }      from '../../stores/uiStore.js'
-import { Avatar }          from '../ui/Avatar.jsx'
-import { Badge }           from '../ui/Badge.jsx'
-import { useUnreadCount }  from '../../hooks/useNotifications.js'
-import { GlobalSearch }   from './GlobalSearch.jsx'
+import { useAuthStore }   from '../../stores/authStore.js'
+import { useUiStore }     from '../../stores/uiStore.js'
+import { Avatar }         from '../ui/Avatar.jsx'
+import { Badge }          from '../ui/Badge.jsx'
+import { useUnreadCount } from '../../hooks/useNotifications.js'
 
 const PAGE_TITLES = {
-  '/dashboard':     { title: 'Dashboard',      sub: 'Overview of your pipeline'  },
-  '/leads':         { title: 'Leads',          sub: 'Manage and track leads'     },
-  '/contacts':      { title: 'Contacts',       sub: 'Your contact directory'     },
-  '/meetings':      { title: 'Meetings',       sub: 'Scheduled meetings'         },
-  '/tasks':         { title: 'Tasks',          sub: 'Pending tasks & follow-ups' },
-  '/opportunities': { title: 'Opportunities',  sub: 'Deals pipeline'             },
-  '/analytics':     { title: 'Analytics',      sub: 'Reports & insights'         },
-  '/notifications': { title: 'Notifications',  sub: 'Activity & alerts'          },
-  '/settings':      { title: 'Settings',       sub: 'Account & preferences'      },
-  '/users':         { title: 'User Management', sub: 'Workspace members & roles' },
+  '/dashboard':     'Dashboard',
+  '/leads':         'Leads',
+  '/contacts':      'Contacts',
+  '/meetings':      'Meetings',
+  '/tasks':         'Tasks',
+  '/opportunities': 'Opportunities',
+  '/analytics':     'Analytics',
+  '/notifications': 'Notifications',
+  '/settings':      'Settings',
+  '/users':         'Members',
 }
 
 export function Navbar() {
-  const { user, logout }    = useAuthStore()
+  const { user, logout } = useAuthStore()
   const {
     profileMenuOpen,
     toggleProfileMenu,
     closeAllDropdowns,
     toggleMobileMenu,
     mobileMenuOpen,
+    openCommandMenu,
   } = useUiStore()
 
   const navigate   = useNavigate()
   const location   = useLocation()
-  const notifRef   = useRef(null)
   const profileRef = useRef(null)
 
-  const pageInfo = PAGE_TITLES[location.pathname] || { title: 'Accord CRM', sub: '' }
+  const title = PAGE_TITLES[location.pathname] || 'Accord CRM'
   const { data: unread = 0 } = useUnreadCount()
 
-  // Close dropdowns on outside click
+  // Close dropdowns on outside click.
+  //
+  // The notifications ref is gone — that button navigates rather than opening a
+  // dropdown, so guarding it was checking a menu that never existed. The
+  // previous version required BOTH refs to miss before closing, which meant a
+  // click anywhere outside still had to clear the notifications ref first.
   useEffect(() => {
     function handleClick(e) {
-      if (
-        notifRef.current   && !notifRef.current.contains(e.target) &&
-        profileRef.current && !profileRef.current.contains(e.target)
-      ) {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
         closeAllDropdowns()
       }
     }
@@ -68,64 +90,62 @@ export function Navbar() {
   }
 
   return (
-    <header className="h-16 bg-white border-b border-gray-100 flex items-center px-4 lg:px-6 gap-4 flex-shrink-0 z-20">
+    <header className="h-12 bg-white border-b border-gray-200 flex items-center px-3 gap-2 flex-shrink-0 z-20">
       {/* Mobile menu toggle */}
       <button
-        className="lg:hidden btn-ghost p-2"
+        className="lg:hidden p-1.5 rounded-md text-gray-500 hover:bg-gray-100 transition-colors duration-120"
         onClick={toggleMobileMenu}
+        aria-label="Menu"
       >
-        {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
       </button>
 
-      {/* Page title */}
-      <div className="flex-1 min-w-0 hidden sm:block">
-        <h1 className="font-display font-700 text-gray-900 text-xl leading-tight">
-          {pageInfo.title}
-        </h1>
-        {pageInfo.sub && (
-          <p className="text-xs text-gray-400 leading-tight">{pageInfo.sub}</p>
-        )}
-      </div>
+      <h1 className="font-display font-semibold text-gray-900 text-sm truncate">
+        {title}
+      </h1>
 
-      {/* Universal search — GlobalSearch renders the same slot the placeholder
-          input previously occupied (same width, same breakpoint, same styling). */}
-      <GlobalSearch />
+      <div className="flex items-center gap-0.5 ml-auto">
+        {/* Command menu — the same surface the sidebar's Search button opens.
+            Kept here too because the reference puts a trigger top-right and
+            because a discoverable button is what teaches the shortcut. */}
+        <button
+          onClick={openCommandMenu}
+          className="p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors duration-120 lg:hidden"
+          aria-label="Search"
+        >
+          <Search size={17} />
+        </button>
 
-      {/* Right actions */}
-      <div className="flex items-center gap-1 ml-auto sm:ml-0">
+        <button
+          onClick={() => { closeAllDropdowns(); navigate('/notifications') }}
+          className="relative p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors duration-120"
+          aria-label="Notifications"
+        >
+          <Bell size={17} />
+          {unread > 0 && (
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-teal-500 rounded-full ring-2 ring-white" />
+          )}
+        </button>
 
-        {/* Notifications — navigate to full page */}
-        <div className="relative" ref={notifRef}>
-          <button
-            onClick={() => { closeAllDropdowns(); navigate('/notifications') }}
-            className="relative btn-ghost p-2 rounded-xl"
-            aria-label="Notifications"
-          >
-            <Bell size={18} />
-            {unread > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-teal-500 rounded-full ring-2 ring-white" />
-            )}
-          </button>
-        </div>
-
-        {/* Profile */}
         <div className="relative" ref={profileRef}>
           <button
             onClick={toggleProfileMenu}
-            className="flex items-center gap-2 btn-ghost px-2 py-1.5 rounded-xl"
+            className="flex items-center gap-1.5 px-1.5 py-1 rounded-md hover:bg-gray-100 transition-colors duration-120"
           >
             <Avatar name={user?.name || 'User'} size="sm" />
-            <span className="text-sm font-medium text-gray-700 hidden sm:block max-w-[120px] truncate">
-              {user?.name || 'User'}
-            </span>
             <ChevronDown
-              size={14}
-              className={`text-gray-400 transition-transform duration-200 ${profileMenuOpen ? 'rotate-180' : ''}`}
+              size={13}
+              className={`text-gray-400 transition-transform duration-120 ${profileMenuOpen ? 'rotate-180' : ''}`}
             />
           </button>
 
           {profileMenuOpen && (
-            <ProfileDropdown user={user} onLogout={handleLogout} onClose={closeAllDropdowns} navigate={navigate} />
+            <ProfileDropdown
+              user={user}
+              onLogout={handleLogout}
+              onClose={closeAllDropdowns}
+              navigate={navigate}
+            />
           )}
         </div>
       </div>
@@ -135,26 +155,26 @@ export function Navbar() {
 
 function ProfileDropdown({ user, onLogout, onClose, navigate }) {
   return (
-    <div className="absolute right-0 top-full mt-2 w-56 card shadow-card-lg py-1 z-50 animate-fade-in">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <p className="text-sm font-semibold text-gray-900">{user?.name}</p>
-        <p className="text-xs text-gray-400 truncate">{user?.email}</p>
+    <div className="absolute right-0 top-full mt-1 w-56 card shadow-card-lg py-1 z-50 animate-fade-in">
+      <div className="px-3 py-2 border-b border-gray-100">
+        <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
+        <p className="text-xs text-gray-500 truncate">{user?.email}</p>
         <Badge variant={user?.role} className="mt-1">{user?.role}</Badge>
       </div>
 
       <div className="py-1">
         <button
           onClick={() => { navigate('/settings'); onClose() }}
-          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-120"
         >
-          <User size={15} className="text-gray-400" />
-          My Profile
+          <User size={14} className="text-gray-400" />
+          My profile
         </button>
         <button
           onClick={() => { navigate('/settings'); onClose() }}
-          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 transition-colors duration-120"
         >
-          <Settings size={15} className="text-gray-400" />
+          <Settings size={14} className="text-gray-400" />
           Settings
         </button>
       </div>
@@ -162,9 +182,9 @@ function ProfileDropdown({ user, onLogout, onClose, navigate }) {
       <div className="border-t border-gray-100 py-1">
         <button
           onClick={onLogout}
-          className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-red-600 hover:bg-red-500/10 transition-colors duration-120"
         >
-          <LogOut size={15} />
+          <LogOut size={14} />
           Sign out
         </button>
       </div>
