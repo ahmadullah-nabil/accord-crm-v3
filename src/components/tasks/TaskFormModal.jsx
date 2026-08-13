@@ -1,16 +1,15 @@
 // ─── TaskFormModal ────────────────────────────────────────────────────────────
 //
-// step059. Chrome and fields now come from `ui/Modal.jsx` and `ui/FormKit.jsx`.
+// step060. Three steps — Task → Scheduling → Summary — on the shared `Stepper`.
 // The prefill path (MeetingDetailPanel's "Create follow-up task"), the
 // relatedType reset, the mutations and the payload shape are UNCHANGED.
 //
-// The portal and the body scroll lock moved INTO `Modal` — this file discovered
-// both problems and its comments explaining them now live in that file, where
-// every dialog gets the fix instead of the two that remembered it.
+// The portal and the body scroll lock live in `Modal`; this file discovered
+// both and its comments explaining them now sit there, where every dialog
+// benefits instead of the two that remembered.
 //
-// `FormError` is new here: the old footer disabled its button while pending but
-// had nowhere to render `createMutation.error`, so a failed insert looked like
-// a click that never registered.
+// Per-step validation via `STEP_FIELDS`; a failed final submit jumps back to
+// the step owning the offending field.
 
 import React, { useState, useEffect } from 'react'
 import { useTasksStore }                         from '../../stores/tasksStore.js'
@@ -20,7 +19,8 @@ import {
 } from '../../lib/tasksData.js'
 import { useAssignableMembers } from '../../hooks/useTeam.js'
 import { Modal, ModalBody }     from '../ui/Modal.jsx'
-import { FormSection, FormRow, FormField, FormError } from '../ui/FormKit.jsx'
+import { Stepper, StepHeading } from '../ui/Stepper.jsx'
+import { FormSection, FormRow, FormField, FormError, ReviewRow } from '../ui/FormKit.jsx'
 
 const EMPTY = {
   title:        '',
@@ -38,6 +38,18 @@ const EMPTY = {
   relatedLabel: '',
   tags:         '',
 }
+
+const STEPS = [
+  { id: 'task',       label: 'Task'       },
+  { id: 'scheduling', label: 'Scheduling' },
+  { id: 'summary',    label: 'Summary'    },
+]
+
+const STEP_FIELDS = [
+  ['title'],
+  ['dueDate', 'assignee'],
+  [],
+]
 
 export function TaskFormModal() {
   const {
@@ -58,6 +70,7 @@ export function TaskFormModal() {
 
   const [form, setForm]     = useState(EMPTY)
   const [errors, setErrors] = useState({})
+  const [step, setStep]     = useState(0)
 
   useEffect(() => {
     if (isOpen) {
@@ -72,6 +85,7 @@ export function TaskFormModal() {
         setForm(prefillData ? { ...EMPTY, ...prefillData } : EMPTY)
       }
       setErrors({})
+      setStep(0)
       createMutation.reset()
       updateMutation.reset()
     }
@@ -88,10 +102,31 @@ export function TaskFormModal() {
     return e
   }
 
+  const errorsForStep = (i) => {
+    const all = validate()
+    return Object.fromEntries(
+      Object.entries(all).filter(([k]) => STEP_FIELDS[i].includes(k))
+    )
+  }
+
+  const next = () => {
+    const errs = errorsForStep(step)
+    if (Object.keys(errs).length) { setErrors(errs); return }
+    setErrors({})
+    setStep((s) => Math.min(s + 1, STEPS.length - 1))
+  }
+
+  const back = () => setStep((s) => Math.max(s - 1, 0))
+
   const handleSubmit = (e) => {
     e.preventDefault()
     const errs = validate()
-    if (Object.keys(errs).length) { setErrors(errs); return }
+    if (Object.keys(errs).length) {
+      setErrors(errs)
+      const bad = STEP_FIELDS.findIndex((fields) => fields.some((f) => errs[f]))
+      if (bad >= 0) setStep(bad)
+      return
+    }
 
     const payload = {
       ...form,
@@ -110,6 +145,7 @@ export function TaskFormModal() {
 
   const isPending     = createMutation.isPending || updateMutation.isPending
   const mutationError = createMutation.error?.message || updateMutation.error?.message
+  const isLast        = step === STEPS.length - 1
 
   const setField = (field) => (e) => {
     setForm((f) => ({ ...f, [field]: e.target.value }))
@@ -120,18 +156,38 @@ export function TaskFormModal() {
     <Modal
       open={isOpen}
       onClose={close}
-      title={isEdit ? 'Edit task' : 'New task'}
+      title={isEdit ? 'Edit task' : 'Create new task'}
       size="md"
+      toolbar={
+        <Stepper steps={STEPS} current={step} onStepClick={setStep} allowForward={isEdit} />
+      }
       footer={
         <>
-          <button type="button" onClick={close} className="btn-secondary" disabled={isPending}>
+          {step > 0 && (
+            <button type="button" onClick={back} className="btn-secondary mr-auto" disabled={isPending}>
+              Back
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={close}
+            className={`btn-secondary ${step === 0 ? 'mr-auto' : ''}`}
+            disabled={isPending}
+          >
             Cancel
           </button>
-          <button type="submit" form="task-form" className="btn-primary" disabled={isPending}>
-            {isPending
-              ? (isEdit ? 'Saving…' : 'Adding…')
-              : (isEdit ? 'Save changes' : 'Create task')}
-          </button>
+          {isLast
+            ? (
+              <button type="submit" form="task-form" className="btn-primary" disabled={isPending}>
+                {isPending
+                  ? (isEdit ? 'Saving…' : 'Adding…')
+                  : (isEdit ? 'Save changes' : 'Create task')}
+              </button>
+            )
+            : (
+              <button type="button" onClick={next} className="btn-primary">Continue</button>
+            )
+          }
         </>
       }
     >
@@ -139,98 +195,130 @@ export function TaskFormModal() {
         <ModalBody>
           <FormError>{mutationError}</FormError>
 
-          <FormSection label="Task" first>
-            <FormField label="Title" error={errors.title} required>
-              <input className="input-base" placeholder="e.g. Send proposal to GreenTech BD"
-                     value={form.title} onChange={setField('title')} />
-            </FormField>
+          {step === 0 && (
+            <FormSection first>
+              <StepHeading
+                title="Task"
+                description="What needs doing, and any context for whoever picks it up."
+              />
 
-            <FormField label="Description">
-              <textarea className="input-base resize-none" rows={3}
-                        placeholder="Additional context or instructions…"
-                        value={form.description} onChange={setField('description')} />
-            </FormField>
-          </FormSection>
+              <FormField label="Task title" error={errors.title} required>
+                <input className="input-base" placeholder="e.g. Send proposal to GreenTech BD"
+                       value={form.title} onChange={setField('title')} />
+              </FormField>
 
-          <FormSection label="Scheduling">
-            <FormRow cols={3}>
-              <FormField label="Type">
-                <select className="input-base" value={form.type} onChange={setField('type')}>
-                  {TASK_TYPES.map((t) => <option key={t}>{t}</option>)}
-                </select>
+              <FormField label="Description">
+                <textarea className="input-base resize-none" rows={4}
+                          placeholder="Additional context or instructions…"
+                          value={form.description} onChange={setField('description')} />
               </FormField>
-              <FormField label="Status">
-                <select className="input-base" value={form.status} onChange={setField('status')}>
-                  {TASK_STATUSES.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </FormField>
-              <FormField label="Priority">
-                <select className="input-base" value={form.priority} onChange={setField('priority')}>
-                  {TASK_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
-                </select>
-              </FormField>
-            </FormRow>
+            </FormSection>
+          )}
 
-            <FormRow>
-              <FormField label="Due date" error={errors.dueDate} required>
-                <input type="date" className="input-base"
-                       value={form.dueDate} onChange={setField('dueDate')} />
-              </FormField>
-              <FormField label="Assignee" error={errors.assignee} required>
-                <select className="input-base" value={form.assignee} onChange={setField('assignee')}>
-                  <option value="">Select…</option>
-                  {assigneeNames.map((a) => <option key={a}>{a}</option>)}
-                </select>
-              </FormField>
-            </FormRow>
-          </FormSection>
+          {step === 1 && (
+            <FormSection first>
+              <StepHeading
+                title="Scheduling"
+                description="When it is due and who is doing it."
+              />
 
-          <FormSection label="Link">
-            <FormField label="Related to">
-              <select
-                className="input-base"
-                value={form.relatedType}
-                onChange={(e) => {
-                  setForm((f) => ({
-                    ...f,
-                    relatedType:  e.target.value,
-                    relatedId:    '',
-                    relatedLabel: '',
-                  }))
-                }}
-              >
-                {RELATED_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </FormField>
-
-            {form.relatedType !== 'None' && (
-              <FormRow>
-                <FormField label={`${form.relatedType} ID`}>
-                  <input
-                    className="input-base"
-                    placeholder={form.relatedType === 'Lead' ? 'L-001' : 'C-001'}
-                    value={form.relatedId}
-                    onChange={setField('relatedId')}
-                  />
+              <FormRow cols={3}>
+                <FormField label="Type">
+                  <select className="input-base" value={form.type} onChange={setField('type')}>
+                    {TASK_TYPES.map((t) => <option key={t}>{t}</option>)}
+                  </select>
                 </FormField>
-                <FormField label="Display label">
-                  <input
-                    className="input-base"
-                    placeholder="Name — Company"
-                    value={form.relatedLabel}
-                    onChange={setField('relatedLabel')}
-                  />
+                <FormField label="Status">
+                  <select className="input-base" value={form.status} onChange={setField('status')}>
+                    {TASK_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Priority">
+                  <select className="input-base" value={form.priority} onChange={setField('priority')}>
+                    {TASK_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+                  </select>
                 </FormField>
               </FormRow>
-            )}
-          </FormSection>
 
-          <FormSection label="Details">
-            <FormField label="Tags" hint="Comma-separated">
-              <input className="input-base" placeholder="Proposal, Follow-up, Enterprise"
-                     value={form.tags} onChange={setField('tags')} />
-            </FormField>
-          </FormSection>
+              <FormRow>
+                <FormField label="Due date" error={errors.dueDate} required>
+                  <input type="date" className="input-base"
+                         value={form.dueDate} onChange={setField('dueDate')} />
+                </FormField>
+                <FormField label="Assignee" error={errors.assignee} required>
+                  <select className="input-base" value={form.assignee} onChange={setField('assignee')}>
+                    <option value="">Select…</option>
+                    {assigneeNames.map((a) => <option key={a}>{a}</option>)}
+                  </select>
+                </FormField>
+              </FormRow>
+            </FormSection>
+          )}
+
+          {step === 2 && (
+            <FormSection first>
+              <StepHeading
+                title="Summary"
+                description="Link it to a record if it belongs to one, then create it."
+              />
+
+              <FormField label="Related to">
+                <select
+                  className="input-base"
+                  value={form.relatedType}
+                  onChange={(e) => {
+                    setForm((f) => ({
+                      ...f,
+                      relatedType:  e.target.value,
+                      relatedId:    '',
+                      relatedLabel: '',
+                    }))
+                  }}
+                >
+                  {RELATED_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </FormField>
+
+              {form.relatedType !== 'None' && (
+                <FormRow>
+                  <FormField label={`${form.relatedType} ID`}>
+                    <input
+                      className="input-base"
+                      placeholder={form.relatedType === 'Lead' ? 'L-001' : 'C-001'}
+                      value={form.relatedId}
+                      onChange={setField('relatedId')}
+                    />
+                  </FormField>
+                  <FormField label="Display label">
+                    <input
+                      className="input-base"
+                      placeholder="Name — Company"
+                      value={form.relatedLabel}
+                      onChange={setField('relatedLabel')}
+                    />
+                  </FormField>
+                </FormRow>
+              )}
+
+              <FormField label="Tags" hint="Comma-separated">
+                <input className="input-base" placeholder="Proposal, Follow-up, Enterprise"
+                       value={form.tags} onChange={setField('tags')} />
+              </FormField>
+
+              <div className="rounded-md border border-gray-200 px-3 py-1">
+                <ReviewRow label="Title"    value={form.title} />
+                <ReviewRow label="Type"     value={form.type} />
+                <ReviewRow label="Status"   value={form.status} />
+                <ReviewRow label="Priority" value={form.priority} />
+                <ReviewRow label="Due date" value={form.dueDate} />
+                <ReviewRow label="Assignee" value={form.assignee} />
+                <ReviewRow
+                  label="Related to"
+                  value={form.relatedType === 'None' ? '' : `${form.relatedType} · ${form.relatedLabel || form.relatedId}`}
+                />
+              </div>
+            </FormSection>
+          )}
         </ModalBody>
       </form>
     </Modal>

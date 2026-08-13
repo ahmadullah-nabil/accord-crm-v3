@@ -95,4 +95,19 @@ export function FormError({ children }) {
   )
 }
 
+/** One line of a review list — the summary step reads the record back before
+ *  it is created. `value` renders as an em-dash when empty rather than a blank
+ *  gap, so "nothing was entered" and "the row failed to render" look different. */
+export function ReviewRow({ label, value }) {
+  const empty = value === undefined || value === null || value === ''
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1.5 border-b border-gray-50 last:border-0">
+      <span className="text-[11px] text-gray-400 shrink-0">{label}</span>
+      <span className={`text-xs text-right min-w-0 truncate ${empty ? 'text-gray-300' : 'text-gray-900'}`}>
+        {empty ? '—' : value}
+      </span>
+    </div>
+  )
+}
+
 export default FormField

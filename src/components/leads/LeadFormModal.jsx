@@ -1,29 +1,42 @@
 // ─── LeadFormModal ────────────────────────────────────────────────────────────
 //
-// step059. Chrome, field wrapper and section grouping now come from
-// `ui/Modal.jsx` and `ui/FormKit.jsx`. The store calls, the validation and the
-// payload shape are UNCHANGED — this batch moved markup, not behaviour.
+// step060. Three steps — Contact → Deal → Summary — on the shared `Stepper`.
+// The store actions, the validation rules and the payload shape are UNCHANGED.
 //
-// Three sections, in the order a person actually knows the answers: who they
-// are, where the deal stands, and everything optional.
+// Per-step validation via `STEP_FIELDS`, and a failed final submit jumps back
+// to the step that owns the offending field. See OppFormModal's header for the
+// full reasoning; it is the same machinery in all four dialogs.
 //
 // `addLead` / `updateLead` are Zustand actions and return nothing, so there is
-// no pending or error state to render here — Leads is the last module still on
-// a Zustand array rather than React Query (backlog item 10). When it moves,
-// give this form the `FormError` banner and a disabled submit, the way Contact
-// and Opportunity have them.
+// still no pending or error state to render — Leads is the last module on a
+// Zustand array (backlog item 10). When it moves to React Query, add the
+// `FormError` banner and a disabled submit the way Contact and Opportunity
+// have them.
 
 import React, { useState, useEffect } from 'react'
 import { useLeadsStore, STAGES, PRIORITIES, SOURCES } from '../../stores/leadsStore.js'
 import { useAssignableMembers } from '../../hooks/useTeam.js'
 import { Modal, ModalBody }     from '../ui/Modal.jsx'
-import { FormSection, FormRow, FormField } from '../ui/FormKit.jsx'
+import { Stepper, StepHeading } from '../ui/Stepper.jsx'
+import { FormSection, FormRow, FormField, ReviewRow } from '../ui/FormKit.jsx'
 
 const EMPTY = {
   name: '', company: '', email: '', phone: '',
   value: '', stage: 'New', priority: 'Medium',
   source: 'Website', assignee: '', notes: '', tags: '',
 }
+
+const STEPS = [
+  { id: 'contact', label: 'Contact' },
+  { id: 'deal',    label: 'Deal'    },
+  { id: 'summary', label: 'Summary' },
+]
+
+const STEP_FIELDS = [
+  ['name', 'company', 'email'],
+  ['value', 'assignee'],
+  [],
+]
 
 export function LeadFormModal() {
   const {
@@ -39,6 +52,7 @@ export function LeadFormModal() {
 
   const [form, setForm]     = useState(EMPTY)
   const [errors, setErrors] = useState({})
+  const [step, setStep]     = useState(0)
 
   useEffect(() => {
     if (isOpen) {
@@ -52,6 +66,7 @@ export function LeadFormModal() {
         setForm(EMPTY)
       }
       setErrors({})
+      setStep(0)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, isEdit, existingLead?.id])
@@ -60,18 +75,39 @@ export function LeadFormModal() {
 
   const validate = () => {
     const e = {}
-    if (!form.name.trim())    e.name    = 'Name is required'
-    if (!form.company.trim()) e.company = 'Company is required'
-    if (!form.email.trim())   e.email   = 'Email is required'
+    if (!form.name.trim())    e.name     = 'Name is required'
+    if (!form.company.trim()) e.company  = 'Company is required'
+    if (!form.email.trim())   e.email    = 'Email is required'
     if (!form.assignee)       e.assignee = 'Assignee is required'
     if (!form.value || isNaN(Number(form.value))) e.value = 'Valid deal value required'
     return e
   }
 
+  const errorsForStep = (i) => {
+    const all = validate()
+    return Object.fromEntries(
+      Object.entries(all).filter(([k]) => STEP_FIELDS[i].includes(k))
+    )
+  }
+
+  const next = () => {
+    const errs = errorsForStep(step)
+    if (Object.keys(errs).length) { setErrors(errs); return }
+    setErrors({})
+    setStep((s) => Math.min(s + 1, STEPS.length - 1))
+  }
+
+  const back = () => setStep((s) => Math.max(s - 1, 0))
+
   const handleSubmit = (e) => {
     e.preventDefault()
     const errs = validate()
-    if (Object.keys(errs).length) { setErrors(errs); return }
+    if (Object.keys(errs).length) {
+      setErrors(errs)
+      const bad = STEP_FIELDS.findIndex((fields) => fields.some((f) => errs[f]))
+      if (bad >= 0) setStep(bad)
+      return
+    }
 
     const payload = {
       ...form,
@@ -91,100 +127,151 @@ export function LeadFormModal() {
     setErrors((err) => { const next = { ...err }; delete next[field]; return next })
   }
 
+  const isLast = step === STEPS.length - 1
+
   return (
     <Modal
       open={isOpen}
       onClose={close}
-      title={isEdit ? 'Edit lead' : 'New lead'}
+      title={isEdit ? 'Edit lead' : 'Create new lead'}
       size="md"
+      toolbar={
+        <Stepper steps={STEPS} current={step} onStepClick={setStep} allowForward={isEdit} />
+      }
       footer={
         <>
-          <button type="button" onClick={close} className="btn-secondary">Cancel</button>
-          <button type="submit" form="lead-form" className="btn-primary">
-            {isEdit ? 'Save changes' : 'Create lead'}
+          {step > 0 && (
+            <button type="button" onClick={back} className="btn-secondary mr-auto">Back</button>
+          )}
+          <button
+            type="button"
+            onClick={close}
+            className={`btn-secondary ${step === 0 ? 'mr-auto' : ''}`}
+          >
+            Cancel
           </button>
+          {isLast
+            ? (
+              <button type="submit" form="lead-form" className="btn-primary">
+                {isEdit ? 'Save changes' : 'Create lead'}
+              </button>
+            )
+            : (
+              <button type="button" onClick={next} className="btn-primary">Continue</button>
+            )
+          }
         </>
       }
     >
-      {/* The submit button lives in the footer, OUTSIDE this <form>, and is
-          bound back to it by `form="lead-form"`. Nesting the footer inside the
-          form instead would put the scrolling boundary in the wrong place —
-          the footer would scroll away with the fields. */}
       <form id="lead-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
         <ModalBody>
-          <FormSection label="Contact" first>
-            <FormRow>
-              <FormField label="Full name" error={errors.name} required>
-                <input className="input-base" placeholder="Farhan Hossain"
-                       value={form.name} onChange={set('name')} />
-              </FormField>
-              <FormField label="Company" error={errors.company} required>
-                <input className="input-base" placeholder="GreenTech BD"
-                       value={form.company} onChange={set('company')} />
-              </FormField>
-            </FormRow>
-
-            <FormRow>
-              <FormField label="Email" error={errors.email} required>
-                <input type="email" className="input-base" placeholder="name@company.com"
-                       value={form.email} onChange={set('email')} />
-              </FormField>
-              <FormField label="Phone">
-                <input type="tel" className="input-base" placeholder="+880 17XX-XXXXXX"
-                       value={form.phone} onChange={set('phone')} />
-              </FormField>
-            </FormRow>
-          </FormSection>
-
-          <FormSection label="Deal">
-            <FormRow cols={3}>
-              <FormField label="Stage">
-                <select className="input-base" value={form.stage} onChange={set('stage')}>
-                  {STAGES.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </FormField>
-              <FormField label="Priority">
-                <select className="input-base" value={form.priority} onChange={set('priority')}>
-                  {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
-                </select>
-              </FormField>
-              <FormField label="Source">
-                <select className="input-base" value={form.source} onChange={set('source')}>
-                  {SOURCES.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </FormField>
-            </FormRow>
-
-            <FormRow>
-              <FormField label="Deal value (BDT)" error={errors.value} required>
-                <input type="number" className="input-base tabular-nums" placeholder="500000"
-                       value={form.value} onChange={set('value')} />
-              </FormField>
-              <FormField label="Assignee" error={errors.assignee} required>
-                <select className="input-base" value={form.assignee} onChange={set('assignee')}>
-                  <option value="">Select assignee…</option>
-                  {assigneeNames.map((a) => <option key={a}>{a}</option>)}
-                </select>
-              </FormField>
-            </FormRow>
-          </FormSection>
-
-          <FormSection label="Details">
-            <FormField label="Tags" hint="Comma-separated">
-              <input className="input-base" placeholder="Enterprise, Q2, Healthcare"
-                     value={form.tags} onChange={set('tags')} />
-            </FormField>
-
-            <FormField label="Notes">
-              <textarea
-                className="input-base resize-none"
-                rows={3}
-                placeholder="Any relevant context about this lead…"
-                value={form.notes}
-                onChange={set('notes')}
+          {step === 0 && (
+            <FormSection first>
+              <StepHeading
+                title="Contact"
+                description="Who the lead is and how to reach them."
               />
-            </FormField>
-          </FormSection>
+
+              <FormRow>
+                <FormField label="Full name" error={errors.name} required>
+                  <input className="input-base" placeholder="Farhan Hossain"
+                         value={form.name} onChange={set('name')} />
+                </FormField>
+                <FormField label="Company" error={errors.company} required>
+                  <input className="input-base" placeholder="GreenTech BD"
+                         value={form.company} onChange={set('company')} />
+                </FormField>
+              </FormRow>
+
+              <FormRow>
+                <FormField label="Email" error={errors.email} required>
+                  <input type="email" className="input-base" placeholder="name@company.com"
+                         value={form.email} onChange={set('email')} />
+                </FormField>
+                <FormField label="Phone">
+                  <input type="tel" className="input-base" placeholder="+880 17XX-XXXXXX"
+                         value={form.phone} onChange={set('phone')} />
+                </FormField>
+              </FormRow>
+            </FormSection>
+          )}
+
+          {step === 1 && (
+            <FormSection first>
+              <StepHeading
+                title="Deal"
+                description="Where this sits in the pipeline, and who owns it."
+              />
+
+              <FormRow cols={3}>
+                <FormField label="Stage">
+                  <select className="input-base" value={form.stage} onChange={set('stage')}>
+                    {STAGES.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Priority">
+                  <select className="input-base" value={form.priority} onChange={set('priority')}>
+                    {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Source">
+                  <select className="input-base" value={form.source} onChange={set('source')}>
+                    {SOURCES.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </FormField>
+              </FormRow>
+
+              <FormRow>
+                <FormField label="Deal value (BDT)" error={errors.value} required>
+                  <input type="number" className="input-base tabular-nums" placeholder="500000"
+                         value={form.value} onChange={set('value')} />
+                </FormField>
+                <FormField label="Assignee" error={errors.assignee} required>
+                  <select className="input-base" value={form.assignee} onChange={set('assignee')}>
+                    <option value="">Select assignee…</option>
+                    {assigneeNames.map((a) => <option key={a}>{a}</option>)}
+                  </select>
+                </FormField>
+              </FormRow>
+
+              <FormField label="Tags" hint="Comma-separated">
+                <input className="input-base" placeholder="Enterprise, Q2, Healthcare"
+                       value={form.tags} onChange={set('tags')} />
+              </FormField>
+            </FormSection>
+          )}
+
+          {step === 2 && (
+            <FormSection first>
+              <StepHeading
+                title="Summary"
+                description="Check this over, then create the lead."
+              />
+
+              <div className="rounded-md border border-gray-200 px-3 py-1">
+                <ReviewRow label="Full name"  value={form.name} />
+                <ReviewRow label="Company"    value={form.company} />
+                <ReviewRow label="Email"      value={form.email} />
+                <ReviewRow label="Phone"      value={form.phone} />
+                <ReviewRow label="Stage"      value={form.stage} />
+                <ReviewRow label="Priority"   value={form.priority} />
+                <ReviewRow label="Source"     value={form.source} />
+                <ReviewRow label="Deal value" value={form.value ? `৳${form.value}` : ''} />
+                <ReviewRow label="Assignee"   value={form.assignee} />
+                <ReviewRow label="Tags"       value={form.tags} />
+              </div>
+
+              <FormField label="Notes">
+                <textarea
+                  className="input-base resize-none"
+                  rows={4}
+                  placeholder="Any relevant context about this lead…"
+                  value={form.notes}
+                  onChange={set('notes')}
+                />
+              </FormField>
+            </FormSection>
+          )}
         </ModalBody>
       </form>
     </Modal>

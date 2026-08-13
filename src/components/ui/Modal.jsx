@@ -34,6 +34,11 @@
 // │                                                                          │
 // │ ESCAPE AND SCROLL LOCK are here, once, instead of in whichever files     │
 // │ remembered. Both were in Task and Meeting only.                           │
+// │                                                                          │
+// │ step060 added the `toolbar` slot and changed the footer from             │
+// │ `justify-end` to plain `gap-2`, so a Back button can push itself left    │
+// │ with `mr-auto` while Cancel/Continue stay right. A footer that hardcodes │
+// │ justify-end cannot express a three-button row.                            │
 // └─────────────────────────────────────────────────────────────────────────┘
 
 import React, { useEffect } from 'react'
@@ -54,6 +59,8 @@ export function Modal({
   title,
   subtitle,
   size = 'md',
+  toolbar,          // step060 — a Stepper sits here: under the header, above
+                    // the scrolling body, and it does NOT scroll with it.
   footer,
   children,
   closeOnBackdrop = true,
@@ -114,12 +121,21 @@ export function Modal({
           </button>
         </div>
 
-        {/* The one region that scrolls. The header and footer are shrink-0, so a
-            tall form scrolls its fields and never its own chrome. */}
+        {/* Progress lives between the header and the body, and is shrink-0 for
+            the same reason both of those are: a stepper that scrolls out of
+            view stops being progress and becomes decoration. */}
+        {toolbar && (
+          <div className="px-4 pt-3 pb-2 border-b border-gray-100 shrink-0">
+            {toolbar}
+          </div>
+        )}
+
+        {/* The one region that scrolls. The header, toolbar and footer are all
+            shrink-0, so a tall form scrolls its fields and never its chrome. */}
         {children}
 
         {footer && (
-          <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-100 shrink-0">
+          <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 shrink-0">
             {footer}
           </div>
         )}

@@ -1,23 +1,22 @@
 // ─── OppFormModal ─────────────────────────────────────────────────────────────
 //
-// step059. Chrome and fields now come from `ui/Modal.jsx` and `ui/FormKit.jsx`.
-// The stage → probability auto-set, the prefill path, the mutations and the
-// payload shape are UNCHANGED.
+// step060. Three-step wizard — Basic Info → Details → Summary — on the shared
+// `Stepper`. The mutations, the stage → probability auto-set, the prefill path
+// and the payload shape are UNCHANGED from step059.
 //
-// TWO FIXES BEYOND STYLING, both visible in the old file above:
+// VALIDATION IS PER STEP. `STEP_FIELDS` names which required fields belong to
+// which step, and Continue validates only those. Without that, either the
+// button blocks on a field two steps ahead that nobody has seen yet, or it
+// waves everything through and the final submit fails on a step the user has
+// already left behind. The final submit still runs the full `validate()`, so
+// the last step cannot be reached with something missing — and if it somehow
+// is, `goToFirstError` jumps back to the step that owns the offending field
+// instead of showing an error on a screen that does not contain it.
 //
-//   1. The footer's submit was a plain <button onClick={handleSubmit}> sitting
-//      OUTSIDE the <form>, so pressing Enter in any field did nothing. It is a
-//      real submit button bound to the form by id now, and Enter works.
-//
-//   2. There was no error surface at all. `createMutation.error` had nowhere
-//      to render, so a failed insert left the dialog open with a button that
-//      looked like it had not been pressed — the step038 wound. `FormError`
-//      renders it.
-//
-// The `$` glyph inside the Deal Value input is gone with the other field
-// icons: the field is labelled in taka everywhere else in the app, and a
-// dollar sign on a BDT figure was actively wrong.
+// SUMMARY IS NOT FILLER. It reads the record back — every field that will be
+// written, including the ones auto-derived like probability — and carries the
+// two long free-text fields. A three-step form whose last step is empty is
+// worse than two steps.
 
 import React, { useState, useEffect } from 'react'
 import {
@@ -28,13 +27,28 @@ import {
 } from '../../hooks/useOpportunities.js'
 import { useAssignableMembers } from '../../hooks/useTeam.js'
 import { Modal, ModalBody }     from '../ui/Modal.jsx'
-import { FormSection, FormRow, FormField, FormError } from '../ui/FormKit.jsx'
+import { Stepper, StepHeading } from '../ui/Stepper.jsx'
+import { FormSection, FormRow, FormField, FormError, ReviewRow } from '../ui/FormKit.jsx'
 
 const EMPTY = {
   title: '', company: '', email: '', phone: '',
   stage: 'New', value: '', probability: 50,
   expectedCloseDate: '', assignee: '', notes: '', tags: '',
 }
+
+const STEPS = [
+  { id: 'basic',   label: 'Basic info' },
+  { id: 'details', label: 'Details'    },
+  { id: 'summary', label: 'Summary'    },
+]
+
+/** Which required fields each step owns. Drives per-step validation AND the
+ *  jump-back-to-the-offending-step behaviour. */
+const STEP_FIELDS = [
+  ['title', 'company', 'assignee'],
+  ['value'],
+  [],
+]
 
 export function OppFormModal() {
   const {
@@ -52,6 +66,7 @@ export function OppFormModal() {
 
   const [form, setForm]     = useState(EMPTY)
   const [errors, setErrors] = useState({})
+  const [step, setStep]     = useState(0)
 
   useEffect(() => {
     if (isOpen) {
@@ -66,6 +81,7 @@ export function OppFormModal() {
         setForm(prefillData ? { ...EMPTY, ...prefillData } : EMPTY)
       }
       setErrors({})
+      setStep(0)
       createMutation.reset()
       updateMutation.reset()
     }
@@ -96,10 +112,33 @@ export function OppFormModal() {
     return e
   }
 
+  /** Errors belonging to one step only. */
+  const errorsForStep = (i) => {
+    const all = validate()
+    return Object.fromEntries(
+      Object.entries(all).filter(([k]) => STEP_FIELDS[i].includes(k))
+    )
+  }
+
+  const next = () => {
+    const errs = errorsForStep(step)
+    if (Object.keys(errs).length) { setErrors(errs); return }
+    setErrors({})
+    setStep((s) => Math.min(s + 1, STEPS.length - 1))
+  }
+
+  const back = () => setStep((s) => Math.max(s - 1, 0))
+
   const handleSubmit = (e) => {
     e.preventDefault()
     const errs = validate()
-    if (Object.keys(errs).length) { setErrors(errs); return }
+    if (Object.keys(errs).length) {
+      setErrors(errs)
+      // Send the user to the step that actually contains the problem.
+      const bad = STEP_FIELDS.findIndex((fields) => fields.some((f) => errs[f]))
+      if (bad >= 0) setStep(bad)
+      return
+    }
 
     const payload = {
       ...form,
@@ -117,21 +156,49 @@ export function OppFormModal() {
 
   const isPending     = createMutation.isPending || updateMutation.isPending
   const mutationError = createMutation.error?.message || updateMutation.error?.message
+  const isLast        = step === STEPS.length - 1
 
   return (
     <Modal
       open={isOpen}
       onClose={close}
-      title={isEdit ? 'Edit deal' : 'New deal'}
+      title={isEdit ? 'Edit deal' : 'Create new deal'}
       size="md"
+      toolbar={
+        <Stepper
+          steps={STEPS}
+          current={step}
+          onStepClick={setStep}
+          allowForward={isEdit}
+        />
+      }
       footer={
         <>
-          <button type="button" onClick={close} className="btn-secondary" disabled={isPending}>
+          {step > 0 && (
+            <button type="button" onClick={back} className="btn-secondary mr-auto" disabled={isPending}>
+              Back
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={close}
+            className={`btn-secondary ${step === 0 ? 'mr-auto' : ''}`}
+            disabled={isPending}
+          >
             Cancel
           </button>
-          <button type="submit" form="opp-form" className="btn-primary" disabled={isPending}>
-            {isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Create deal'}
-          </button>
+          {isLast
+            ? (
+              <button type="submit" form="opp-form" className="btn-primary" disabled={isPending}>
+                {isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Create deal'}
+              </button>
+            )
+            : (
+              <button type="button" onClick={next} className="btn-primary">
+                Continue
+              </button>
+            )
+          }
         </>
       }
     >
@@ -139,71 +206,106 @@ export function OppFormModal() {
         <ModalBody>
           <FormError>{mutationError}</FormError>
 
-          <FormSection label="Deal" first>
-            <FormField label="Title" error={errors.title} required>
-              <input className="input-base" placeholder="Deal name…"
-                     value={form.title} onChange={set('title')} />
-            </FormField>
+          {step === 0 && (
+            <FormSection first>
+              <StepHeading
+                title="Basic info"
+                description="Enter basic information about this deal."
+              />
 
-            <FormField label="Company" error={errors.company} required>
-              <input className="input-base" placeholder="Company name…"
-                     value={form.company} onChange={set('company')} />
-            </FormField>
+              <FormField label="Deal name" error={errors.title} required>
+                <input className="input-base" placeholder="e.g. ERP rollout — GreenTech BD"
+                       value={form.title} onChange={set('title')} />
+              </FormField>
 
-            <FormRow>
-              <FormField label="Deal value (BDT)" error={errors.value}>
-                <input type="text" className="input-base tabular-nums" placeholder="0"
-                       value={form.value} onChange={set('value')} />
+              <FormField label="Related to" error={errors.company} required>
+                <input className="input-base" placeholder="Company name…"
+                       value={form.company} onChange={set('company')} />
               </FormField>
-              <FormField label="Expected close">
-                <input type="date" className="input-base"
-                       value={form.expectedCloseDate} onChange={set('expectedCloseDate')} />
-              </FormField>
-            </FormRow>
 
-            <FormRow cols={3}>
-              <FormField label="Stage" required>
-                <select className="input-base" value={form.stage} onChange={set('stage')}>
-                  {OPPORTUNITY_STAGES.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </FormField>
-              <FormField label="Probability" hint="Follows the stage unless you change it">
-                <input type="number" min="0" max="100" className="input-base tabular-nums"
-                       value={form.probability} onChange={set('probability')} />
-              </FormField>
-              <FormField label="Assignee" error={errors.assignee} required>
+              <FormField label="Deal owner" error={errors.assignee} required>
                 <select className="input-base" value={form.assignee} onChange={set('assignee')}>
-                  <option value="">Select…</option>
+                  <option value="">Select owner…</option>
                   {assigneeNames.map((n) => <option key={n}>{n}</option>)}
                 </select>
               </FormField>
-            </FormRow>
-          </FormSection>
 
-          <FormSection label="Contact">
-            <FormRow>
-              <FormField label="Email">
-                <input type="email" className="input-base" placeholder="contact@company.com"
-                       value={form.email} onChange={set('email')} />
+              <FormRow>
+                <FormField label="Email">
+                  <input type="email" className="input-base" placeholder="contact@company.com"
+                         value={form.email} onChange={set('email')} />
+                </FormField>
+                <FormField label="Phone">
+                  <input type="tel" className="input-base" placeholder="+880…"
+                         value={form.phone} onChange={set('phone')} />
+                </FormField>
+              </FormRow>
+            </FormSection>
+          )}
+
+          {step === 1 && (
+            <FormSection first>
+              <StepHeading
+                title="Details"
+                description="Where the deal stands and what it is worth."
+              />
+
+              <FormRow>
+                <FormField label="Stage" required>
+                  <select className="input-base" value={form.stage} onChange={set('stage')}>
+                    {OPPORTUNITY_STAGES.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Probability" hint="Follows the stage unless you change it">
+                  <input type="number" min="0" max="100" className="input-base tabular-nums"
+                         value={form.probability} onChange={set('probability')} />
+                </FormField>
+              </FormRow>
+
+              <FormRow>
+                <FormField label="Deal value (BDT)" error={errors.value}>
+                  <input type="text" className="input-base tabular-nums" placeholder="0"
+                         value={form.value} onChange={set('value')} />
+                </FormField>
+                <FormField label="Expected close">
+                  <input type="date" className="input-base"
+                         value={form.expectedCloseDate} onChange={set('expectedCloseDate')} />
+                </FormField>
+              </FormRow>
+
+              <FormField label="Tags" hint="Comma-separated">
+                <input className="input-base" placeholder="Enterprise, Q3, ERP"
+                       value={form.tags} onChange={set('tags')} />
               </FormField>
-              <FormField label="Phone">
-                <input type="tel" className="input-base" placeholder="+880…"
-                       value={form.phone} onChange={set('phone')} />
+            </FormSection>
+          )}
+
+          {step === 2 && (
+            <FormSection first>
+              <StepHeading
+                title="Summary"
+                description="Check this over, then create the deal."
+              />
+
+              <div className="rounded-md border border-gray-200 px-3 py-1">
+                <ReviewRow label="Deal name"     value={form.title} />
+                <ReviewRow label="Related to"    value={form.company} />
+                <ReviewRow label="Deal owner"    value={form.assignee} />
+                <ReviewRow label="Stage"         value={form.stage} />
+                <ReviewRow label="Probability"   value={`${form.probability}%`} />
+                <ReviewRow label="Deal value"    value={form.value ? `৳${form.value}` : ''} />
+                <ReviewRow label="Expected close" value={form.expectedCloseDate} />
+                <ReviewRow label="Email"         value={form.email} />
+                <ReviewRow label="Phone"         value={form.phone} />
+                <ReviewRow label="Tags"          value={form.tags} />
+              </div>
+
+              <FormField label="Notes">
+                <textarea className="input-base resize-none" rows={4} placeholder="Deal notes…"
+                          value={form.notes} onChange={set('notes')} />
               </FormField>
-            </FormRow>
-          </FormSection>
-
-          <FormSection label="Details">
-            <FormField label="Tags" hint="Comma-separated">
-              <input className="input-base" placeholder="tag1, tag2…"
-                     value={form.tags} onChange={set('tags')} />
-            </FormField>
-
-            <FormField label="Notes">
-              <textarea className="input-base resize-none" rows={3} placeholder="Deal notes…"
-                        value={form.notes} onChange={set('notes')} />
-            </FormField>
-          </FormSection>
+            </FormSection>
+          )}
         </ModalBody>
       </form>
     </Modal>
