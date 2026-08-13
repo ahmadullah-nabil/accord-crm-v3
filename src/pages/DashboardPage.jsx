@@ -147,7 +147,7 @@ export function DashboardPage() {
           Today is first and default because it answers the daily question. The
           analytics remain one click away rather than deleted — if nobody opens
           them in a month, that is the evidence for removing them. */}
-      <div className="flex items-center gap-1 border-b border-slate-200">
+      <div className="flex items-center gap-1 border-b border-gray-200">
         {[
           { id: 'today',    label: 'Today' },
           { id: 'overview', label: 'Overview' },
@@ -159,7 +159,7 @@ export function DashboardPage() {
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition
               ${tab === t.id
                 ? 'border-teal-600 text-teal-700'
-                : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
             {t.label}
           </button>
@@ -178,7 +178,10 @@ export function DashboardPage() {
           />
           {/* Below the calendar: the month answers "what is happening", this
               answers "where is the pipeline". Counts only — every stage is a
-              link into the existing Leads page, not a second lead surface. */}
+              link into the existing Leads page, not a second lead surface.
+              step049: this used to be pushed down the page every time a date
+              was clicked, because the day detail opened above it. The agenda
+              rail absorbed that, so this now holds its position. */}
           <LeadOverview owner={leadFilter.owner} onSetOwner={leadFilter.setOwner} />
           <MeetingFormModal />
           <TaskFormModal />

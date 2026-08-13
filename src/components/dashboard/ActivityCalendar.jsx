@@ -12,6 +12,35 @@
 // │ are dimmed and struck through — present, but visibly done.               │
 // └─────────────────────────────────────────────────────────────────────────┘
 //
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │ step049 — TWO COLUMNS: AGENDA LEFT, MONTH RIGHT                         │
+// ├─────────────────────────────────────────────────────────────────────────┤
+// │ The month grid used to be the whole width, with the day detail appearing│
+// │ BELOW it when a date was picked — which pushed Lead Overview down the   │
+// │ page every time you clicked a date, and put the thing you had just      │
+// │ asked to see below the fold.                                            │
+// │                                                                          │
+// │ Now the agenda is a permanent left rail and the grid sits beside it. It │
+// │ answers "what is on" without a click, and picking a date changes the    │
+// │ rail's contents rather than the page's height. Nothing moves.           │
+// │                                                                          │
+// │ THIS ALSO MERGED TWO COMPONENTS INTO ONE. There was an AgendaList for   │
+// │ phones and a separate day-detail block for desktop, rendering the same  │
+// │ data from the same `byDate` in two different layouts that had to be     │
+// │ kept in agreement by hand. One rail now serves both: full width below   │
+// │ `sm`, a column above it.                                                │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// EVERY COLOUR HERE WAS `slate-*`, WHICH IS NOT THEMED
+// ────────────────────────────────────────────────────
+// tailwind.config maps only `gray` (neutral ramp) and `teal` (accent ramp) to
+// the CSS custom properties. `slate-*` resolves to Tailwind's own fixed
+// palette, so 49 of them in this file ignored dark mode entirely and ignored
+// the user's accent choice — the calendar stayed light on a dark theme. All of
+// them are `gray-*` now, which is the same neutral in light mode and inverts
+// correctly in dark. Semantic colours (rose for errors, emerald for done) stay
+// fixed, matching how badges work everywhere else in the app.
+//
 // TWO KINDS OF ITEM, RENDERED DIFFERENTLY ON PURPOSE
 //   • Tasks are ALL-DAY — a due date carries no time, and inventing one would
 //     make a task look scheduled against a real meeting at that hour. They sit
@@ -22,7 +51,7 @@ import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Calendar as CalendarIcon,
-  Clock, Check, X as XIcon, Plus,
+  Clock, Check, Plus,
 } from 'lucide-react'
 
 import { useCalendarActivities } from '../../hooks/useCalendarActivities.js'
@@ -108,53 +137,91 @@ function ItemChip({ item, onClick, compact = false }) {
 function CreateMenu({ date, onMeeting, onTask, onCancel, className = '' }) {
   return (
     <div
-      className={`absolute z-30 w-40 rounded-lg border border-slate-200 bg-white shadow-lg py-1 ${className}`}
+      className={`absolute z-30 w-40 rounded-lg border border-gray-200 bg-white shadow-lg py-1 ${className}`}
       onClick={(e) => e.stopPropagation()}
     >
       <span role="button" tabIndex={0}
         onClick={() => onMeeting(date)}
         onKeyDown={(e) => e.key === 'Enter' && onMeeting(date)}
-        className="w-full px-3 py-1.5 text-xs text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer">
-        <CalendarIcon className="w-3.5 h-3.5 text-slate-400" /> New meeting
+        className="w-full px-3 py-1.5 text-xs text-left hover:bg-gray-50 flex items-center gap-2 cursor-pointer">
+        <CalendarIcon className="w-3.5 h-3.5 text-gray-400" /> New meeting
       </span>
       <span role="button" tabIndex={0}
         onClick={() => onTask(date)}
         onKeyDown={(e) => e.key === 'Enter' && onTask(date)}
-        className="w-full px-3 py-1.5 text-xs text-left hover:bg-slate-50 flex items-center gap-2 cursor-pointer">
-        <Check className="w-3.5 h-3.5 text-slate-400" /> New task
+        className="w-full px-3 py-1.5 text-xs text-left hover:bg-gray-50 flex items-center gap-2 cursor-pointer">
+        <Check className="w-3.5 h-3.5 text-gray-400" /> New task
       </span>
       <span role="button" tabIndex={0}
         onClick={onCancel}
         onKeyDown={(e) => e.key === 'Enter' && onCancel()}
-        className="w-full px-3 py-1.5 text-xs text-left text-slate-400 hover:bg-slate-50 cursor-pointer block">
+        className="w-full px-3 py-1.5 text-xs text-left text-gray-400 hover:bg-gray-50 cursor-pointer block">
         Cancel
       </span>
     </div>
   )
 }
 
-// ─── AgendaList — the mobile view ─────────────────────────────────
+// ─── AgendaRail — the left column, and the whole view on a phone ────────────
 //
-// Seven columns on a 390px screen is ~50px per cell. No chip is legible at that
-// width, and shrinking the font further makes it illegibly small rather than
-// illegibly cramped — so below `sm` the grid is replaced outright.
+// step049. Was AgendaList, rendered only below `sm`. It is now visible at every
+// width: the left rail on desktop, the entire calendar view on a phone.
+//
+// Seven columns on a 390px screen is ~50px per cell — no chip is legible at
+// that width, so below `sm` the grid is still replaced outright. What changed
+// is that the same list is no longer thrown away on desktop, where it answers
+// "what is on this month" without clicking anything.
 //
 // This is the SAME DATA through the same hooks: `byDate` already exists for the
-// grid. Only days that HAVE something appear, in order, with every item shown
-// rather than three and a "+2 more" — vertical space is the one thing a phone
-// has, so the truncation the grid needs is pure loss here.
+// grid, so the rail and the grid cannot disagree about what is on a date.
 //
-// The create affordance changes with it. The grid reveals a "+" on hover, and
-// there is no hover on a touch screen, so each day carries a visible one. Days
-// with nothing are not listed at all and therefore have no button — the footer
-// covers those, prefilled with a date inside the month you are looking at.
-function AgendaList({
+// TWO MODES. With no date selected it lists every day that HAS something, in
+// order. With a date selected it shows just that day — which is what the old
+// desktop-only day-detail block did, in a place that does not push the rest of
+// the page down.
+//
+// Days with nothing are not listed and therefore have no create button; the
+// footer covers those, prefilled with a date inside the month being viewed.
+function AgendaRail({
   dates, byDate, today, onOpen,
   createFor, setCreateFor, onCreateMeeting, onCreateTask, defaultDate,
+  selectedDate, onClearSelected,
 }) {
+  const shownDates = selectedDate ? [selectedDate] : dates
+
   return (
-    <div className="sm:hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
-      {dates.map((date) => {
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-100">
+        <span className="text-xs font-semibold text-gray-500">
+          {selectedDate
+            ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString(undefined, {
+                weekday: 'long', day: 'numeric', month: 'long',
+              })
+            : 'Agenda'}
+        </span>
+        {selectedDate
+          ? (
+            <button type="button" onClick={onClearSelected}
+              className="text-[11px] text-teal-700 hover:text-teal-800 font-medium">
+              Show month
+            </button>
+          )
+          : (
+            <span className="text-[11px] text-gray-400 tabular-nums">
+              {dates.length} day{dates.length === 1 ? '' : 's'}
+            </span>
+          )}
+      </div>
+
+      {/* Capped so a busy month scrolls the rail instead of stretching the page
+          taller than the grid beside it. */}
+      <div className="divide-y divide-gray-100 max-h-[560px] overflow-y-auto">
+      {shownDates.length === 0 && (
+        <p className="px-3 py-6 text-xs text-gray-400 text-center">
+          {selectedDate ? 'Nothing scheduled this day.' : 'Nothing scheduled this month.'}
+        </p>
+      )}
+      {shownDates.map((date) => {
         const items   = byDate[date] ?? []
         const allDay  = items.filter((i) => i.allDay)
         const timed   = items.filter((i) => !i.allDay)
@@ -166,10 +233,10 @@ function AgendaList({
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-baseline gap-2 min-w-0">
                 <span className={`text-sm font-semibold tabular-nums
-                  ${isToday ? 'text-teal-700' : 'text-slate-900'}`}>
+                  ${isToday ? 'text-teal-700' : 'text-gray-900'}`}>
                   {d.getDate()}
                 </span>
-                <span className="text-[11px] uppercase tracking-wide text-slate-400">
+                <span className="text-[11px] uppercase tracking-wide text-gray-400">
                   {d.toLocaleDateString(undefined, { weekday: 'short' })}
                 </span>
                 {isToday && (
@@ -205,7 +272,7 @@ function AgendaList({
             <div className="space-y-2">
               {allDay.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-400">All day</p>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400">All day</p>
                   {allDay.map((item) => (
                     <ItemChip key={item.id} item={item} onClick={onOpen} />
                   ))}
@@ -215,7 +282,7 @@ function AgendaList({
               {timed.length > 0 && (
                 <div className="space-y-1">
                   {allDay.length > 0 && (
-                    <p className="text-[10px] uppercase tracking-wide text-slate-400 flex items-center gap-1">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> Scheduled
                     </p>
                   )}
@@ -234,18 +301,20 @@ function AgendaList({
         )
       })}
 
+      </div>
+
       {/* The grid can create on any date because every date is on screen. The
           agenda only lists days that have something, so an empty Thursday is
           unreachable — this is the way to it. The date is prefilled to a day
           inside the month being viewed, and is editable in the modal. */}
-      <div className="p-3 flex items-center gap-2">
+      <div className="p-3 flex items-center gap-2 border-t border-gray-100">
         <button type="button" onClick={() => onCreateMeeting(defaultDate)}
-          className="flex-1 text-xs px-2.5 py-2 rounded-lg border border-slate-200 hover:bg-slate-50
+          className="flex-1 text-xs px-2.5 py-2 rounded-lg border border-gray-200 hover:bg-gray-50
                      inline-flex items-center justify-center gap-1.5">
           <Plus className="w-3 h-3" /> Meeting
         </button>
         <button type="button" onClick={() => onCreateTask(defaultDate)}
-          className="flex-1 text-xs px-2.5 py-2 rounded-lg border border-slate-200 hover:bg-slate-50
+          className="flex-1 text-xs px-2.5 py-2 rounded-lg border border-gray-200 hover:bg-gray-50
                      inline-flex items-center justify-center gap-1.5">
           <Plus className="w-3 h-3" /> Task
         </button>
@@ -353,27 +422,25 @@ export function ActivityCalendar({
     setCreateFor(null)
   }
 
-  const selectedItems = selectedDate ? (byDate[selectedDate] ?? []) : []
-
   return (
     <div className="space-y-4">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => step(-1)}
-            className="p-1.5 rounded-lg hover:bg-slate-100" aria-label="Previous month">
-            <ChevronLeft className="w-4 h-4 text-slate-600" />
+            className="p-1.5 rounded-lg hover:bg-gray-100" aria-label="Previous month">
+            <ChevronLeft className="w-4 h-4 text-gray-600" />
           </button>
           <h2 className="font-display font-semibold text-gray-900 text-base min-w-[150px] text-center
                          select-none">
             {MONTH_NAMES[cursor.month]} {cursor.year}
           </h2>
           <button type="button" onClick={() => step(1)}
-            className="p-1.5 rounded-lg hover:bg-slate-100" aria-label="Next month">
-            <ChevronRight className="w-4 h-4 text-slate-600" />
+            className="p-1.5 rounded-lg hover:bg-gray-100" aria-label="Next month">
+            <ChevronRight className="w-4 h-4 text-gray-600" />
           </button>
           <button type="button" onClick={goToday}
-            className="ml-2 text-xs px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50">
+            className="ml-2 text-xs px-2.5 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
             Today
           </button>
         </div>
@@ -384,10 +451,10 @@ export function ActivityCalendar({
           {['pending', 'completed', 'overdue', 'cancelled'].map((k) => (
             <span key={k}
               className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full
-                         border border-slate-200 bg-white text-slate-600">
+                         border border-gray-200 bg-white text-gray-600">
               <span className={`w-1.5 h-1.5 rounded-full ${STATUS_STYLE[k].dot}`} />
               {k.charAt(0).toUpperCase() + k.slice(1)}
-              <span className="tabular-nums font-medium text-slate-900">{counts[k] ?? 0}</span>
+              <span className="tabular-nums font-medium text-gray-900">{counts[k] ?? 0}</span>
             </span>
           ))}
         </div>
@@ -416,16 +483,38 @@ export function ActivityCalendar({
         </div>
       )}
 
-      {/* ── Grid (sm and up) ───────────────────────────────────────────────
-          Hidden below sm rather than reflowed: a seven-column month cannot be
-          made legible at 390px, so the small screen gets a different view of
-          the same data rather than a worse version of this one. */}
-      <div className="hidden sm:block rounded-xl border border-slate-200 overflow-hidden bg-white">
-        <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+      {/* ── Two columns: agenda rail, then the month ──────────────────────
+          Below `sm` this collapses to the rail alone — a seven-column month
+          cannot be made legible at 390px, so the small screen gets a different
+          view of the same data rather than a worse version of this one. */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start">
+
+      {/* The rail is rendered at every width now. On a phone it is the whole
+          calendar; on desktop it is the column the day detail used to be a
+          block below. */}
+      <div className="w-full sm:w-[320px] sm:flex-shrink-0">
+        <AgendaRail
+          dates={agendaDates}
+          byDate={byDate}
+          today={today}
+          onOpen={openItem}
+          createFor={createFor}
+          setCreateFor={setCreateFor}
+          onCreateMeeting={createMeetingOn}
+          onCreateTask={createTaskOn}
+          defaultDate={defaultCreateDate}
+          selectedDate={selectedDate}
+          onClearSelected={() => setSelectedDate(null)}
+        />
+      </div>
+
+      <div className="hidden sm:block flex-1 min-w-0 rounded-xl border border-gray-200
+                      overflow-hidden bg-white self-start">
+        <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50">
           {WEEKDAYS.map((d) => (
             <div key={d}
-              className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide
-                         text-slate-400 text-center">
+              className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wide
+                         text-gray-400 text-center">
               {d}
             </div>
           ))}
@@ -438,9 +527,10 @@ export function ActivityCalendar({
             const timed    = items.filter((i) => !i.allDay)
             const isToday  = cell.date === today
             const isPicked = cell.date === selectedDate
-            // Three fit; a fourth would push the row taller than its
-            // neighbours and make the grid ragged.
-            const shown    = [...allDay, ...timed].slice(0, 3)
+            // step049: cells are 112px now rather than 76px, so four fit. A
+            // fifth would push the row taller than its neighbours and make the
+            // grid ragged — the cap exists for evenness, not for space.
+            const shown    = [...allDay, ...timed].slice(0, 4)
             const overflow = items.length - shown.length
 
             return (
@@ -448,16 +538,16 @@ export function ActivityCalendar({
                 type="button"
                 key={cell.date}
                 onClick={() => setSelectedDate(isPicked ? null : cell.date)}
-                className={`group relative min-h-[76px] border-b border-r border-slate-100
-                            p-1.5 text-left align-top transition
-                            ${cell.inMonth ? 'bg-white' : 'bg-slate-50/50'}
+                className={`group relative min-h-[112px] border-b border-r border-gray-100
+                            p-2 text-left align-top transition
+                            ${cell.inMonth ? 'bg-white' : 'bg-gray-50/50'}
                             ${isPicked ? 'ring-2 ring-inset ring-teal-400' : 'hover:bg-teal-50/40'}`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className={`text-xs tabular-nums
+                  <span className={`text-sm tabular-nums
                     ${isToday
-                      ? 'w-5 h-5 rounded-full bg-teal-600 text-white flex items-center justify-center font-semibold'
-                      : cell.inMonth ? 'text-slate-700' : 'text-slate-400'}`}>
+                      ? 'w-6 h-6 rounded-full bg-teal-600 text-white flex items-center justify-center font-semibold'
+                      : cell.inMonth ? 'text-gray-700 font-medium' : 'text-gray-400'}`}>
                     {cell.dayNumber}
                   </span>
 
@@ -498,7 +588,7 @@ export function ActivityCalendar({
                     <ItemChip key={item.id} item={item} onClick={openItem} compact />
                   ))}
                   {overflow > 0 && (
-                    <span className="block text-[10px] text-slate-500 pl-1">
+                    <span className="block text-[10px] text-gray-500 pl-1">
                       +{overflow} more
                     </span>
                   )}
@@ -509,28 +599,16 @@ export function ActivityCalendar({
         </div>
       </div>
 
-      {/* Rendered even when the month is empty: `dates` is then [] and only the
-          footer create buttons remain, which is the sole way to add anything on
-          a phone. The empty-state text below explains the blank. */}
-      <AgendaList
-        dates={agendaDates}
-        byDate={byDate}
-        today={today}
-        onOpen={openItem}
-        createFor={createFor}
-        setCreateFor={setCreateFor}
-        onCreateMeeting={createMeetingOn}
-        onCreateTask={createTaskOn}
-        defaultDate={defaultCreateDate}
-      />
+      </div>
 
-      {isLoading && <p className="text-xs text-slate-500">Loading activities…</p>}
+
+      {isLoading && <p className="text-xs text-gray-500">Loading activities…</p>}
 
       {/* An empty grid has two very different causes and the user cannot tell
           them apart by looking. Say which one it is, and offer the way out. */}
       {!isLoading && !isError && items.length === 0 && (
         all.length > 0 ? (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-gray-500">
             Nothing matches these filters — {all.length} item{all.length === 1 ? '' : 's'} this
             month are hidden.{' '}
             <button
@@ -542,88 +620,18 @@ export function ActivityCalendar({
             </button>
           </p>
         ) : (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-gray-500">
             Nothing scheduled this month. Use + on a date to add a meeting or a task.
           </p>
         )
       )}
 
-      {/* ── Day detail ─────────────────────────────────────────────────────── */}
-      {/* Desktop only. It exists because a grid cell can show three of nine
-          items; the agenda shows all of them, so on a phone this panel would
-          repeat what is already on screen. */}
-      {selectedDate && (
-        <div className="hidden sm:block rounded-xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-900">
-              {new Date(`${selectedDate}T00:00:00`).toLocaleDateString(undefined, {
-                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-              })}
-            </h3>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => createMeetingOn(selectedDate)}
-                className="text-xs px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50
-                           inline-flex items-center gap-1.5">
-                <Plus className="w-3 h-3" /> Meeting
-              </button>
-              <button type="button" onClick={() => createTaskOn(selectedDate)}
-                className="text-xs px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50
-                           inline-flex items-center gap-1.5">
-                <Plus className="w-3 h-3" /> Task
-              </button>
-              <button type="button" onClick={() => setSelectedDate(null)}
-                className="p-1 rounded hover:bg-slate-100" aria-label="Close day view">
-                <XIcon className="w-4 h-4 text-slate-400" />
-              </button>
-            </div>
-          </div>
+      {/* The day-detail block that used to sit here is gone: AgendaRail shows
+          the selected day in the left column instead. It rendered the same
+          items from the same `byDate`, but below the grid — so clicking a date
+          pushed Lead Overview down the page and put the thing you asked for
+          below the fold. Nothing moves now. */}
 
-          {selectedItems.length === 0 ? (
-            <p className="text-xs text-slate-500">
-              Nothing scheduled. Add a meeting or task above.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {/* All-day first, and labelled — otherwise a task with no time
-                  looks like a meeting whose time failed to load. */}
-              {selectedItems.some((i) => i.allDay) && (
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-1.5">
-                    All day
-                  </p>
-                  <div className="space-y-1">
-                    {selectedItems.filter((i) => i.allDay).map((item) => (
-                      <ItemChip key={item.id} item={item} onClick={openItem} />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedItems.some((i) => !i.allDay) && (
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-slate-400 mb-1.5 flex items-center gap-1">
-                    <Clock className="w-3 h-3" /> Scheduled
-                  </p>
-                  <div className="space-y-1">
-                    {selectedItems.filter((i) => !i.allDay).map((item) => (
-                      <div key={item.id} className="flex items-center gap-2">
-                        <ItemChip item={item} onClick={openItem} />
-                        {/* A meeting whose invitations never went out must say
-                            so here — silence reads as success. */}
-                        {item.syncStatus === 'failed' && (
-                          <span className="text-[10px] text-rose-600 shrink-0">
-                            invite failed
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
