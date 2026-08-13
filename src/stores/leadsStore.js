@@ -13,6 +13,28 @@ import {
   resolveNotificationRecipient,
 } from '../services/notificationsService.js'
 import { ownershipStamp, TEAM_MEMBER_NAMES } from '../lib/users.js'
+import { queryClient } from '../lib/queryClient.js'
+
+// ── Keeping React Query in step with this store ───────────────────────────────
+//
+// This store is its own cache: it holds `leads` and writes to Supabase itself,
+// with no React Query involvement. But the Dashboard's Lead Overview reads the
+// SAME data through React Query under ['leads', 'stage-facets'].
+//
+// Nothing connected the two, so a lead created, edited, re-staged or deleted
+// here did not reach the Overview until its 30s staleTime expired. The counts
+// were not wrong so much as quietly late, which is harder to notice and harder
+// to trust.
+//
+// Invalidating the ['leads'] PREFIX covers every key nested under it — the
+// facets key was deliberately namespaced that way for exactly this. New lead
+// queries added later inherit the behaviour without touching this file.
+//
+// Called only AFTER Supabase confirms. Invalidating on an optimistic update
+// would refetch the server's pre-mutation state and visibly undo the change.
+function invalidateLeadQueries() {
+  queryClient.invalidateQueries({ queryKey: ['leads'] })
+}
 import { todayLocal } from '../lib/dates.js'
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -119,6 +141,7 @@ export const useLeadsStore = create((set, get) => ({
       })
       // Prepend the real row returned by Supabase (has the real UUID)
       set((s) => ({ leads: [created, ...s.leads] }))
+      invalidateLeadQueries()
 
       // Fire-and-forget activity log — never blocks or rolls back on failure
       const actor = useAuthStore.getState().user?.name ?? 'Unknown'
@@ -180,6 +203,7 @@ export const useLeadsStore = create((set, get) => ({
       set((s) => ({
         leads: s.leads.map((l) => (l.id === id ? updated : l)),
       }))
+      invalidateLeadQueries()
 
       // Reassignment is the notifiable event. An edit that leaves the assignee
       // untouched (renaming the company, changing priority) notifies nobody.
@@ -229,6 +253,9 @@ export const useLeadsStore = create((set, get) => ({
       set((s) => ({
         leads: s.leads.map((l) => (l.id === id ? updated : l)),
       }))
+      // Stage IS the facet the Lead Overview counts by, so this is the mutation
+      // whose staleness was most visible.
+      invalidateLeadQueries()
 
       // Fire-and-forget activity log
       const actor = useAuthStore.getState().user?.name ?? 'Unknown'
@@ -269,6 +296,7 @@ export const useLeadsStore = create((set, get) => ({
 
     try {
       await removeLead(id)
+      invalidateLeadQueries()
     } catch (err) {
       console.error('[leadsStore] deleteLead failed:', err)
       // Roll back — restore the snapshot

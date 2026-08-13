@@ -1,3 +1,19 @@
+// ─── LeadsPage ────────────────────────────────────────────────────────────────
+//
+// step041. The page heading block is gone, matching Contacts.
+//
+// It was a 36px blue icon tile, an <h1> reading "Leads" and a subtitle reading
+// "Manage and track your sales pipeline" — on a page reached by clicking
+// "Leads" in the sidebar, under a top bar already reading "Leads".
+//
+// The toolbar now takes `total` and `filtered` so the header can say
+// "All leads · 4 of 12". Those counts come from the store rather than a second
+// filter pass, so the number in the header and the rows in the table cannot
+// disagree.
+//
+// Everything else is untouched: same store, same initialize(), same modals and
+// panels mounted in the same order for the same reasons.
+
 import React, { useEffect } from 'react'
 import { Target, RefreshCw } from 'lucide-react'
 import { LeadsSummaryBar }  from '../components/leads/LeadsSummaryBar.jsx'
@@ -15,7 +31,7 @@ import { TaskFormModal }      from '../components/tasks/TaskFormModal.jsx'
 import { TaskDetailPanel }    from '../components/tasks/TaskDetailPanel.jsx'
 import { OppFormModal }       from '../components/opportunities/OppFormModal.jsx'
 export function LeadsPage() {
-  const { viewMode, isLoading, error, initialize } = useLeadsStore()
+  const { viewMode, isLoading, error, initialize, leads, getFilteredLeads } = useLeadsStore()
 
   // Fetch leads from Supabase when the page mounts.
   // initialize() is a no-op if the user is not authenticated.
@@ -43,25 +59,9 @@ export function LeadsPage() {
 
   return (
     <>
-      <div className="space-y-4 max-w-[1600px]">
-        {/* Page heading */}
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center ring-1 ring-blue-200">
-            <Target size={18} className="text-blue-600" />
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-gray-900 text-xl leading-tight">Leads</h1>
-            <p className="text-xs text-gray-500">Manage and track your sales pipeline</p>
-          </div>
-        </div>
-
-        {/* Pipeline summary */}
+      <div className="space-y-2 max-w-[1600px]">
         <LeadsSummaryBar />
-
-        {/* Toolbar */}
-        <LeadsToolbar />
-
-        {/* View: table or kanban */}
+        <LeadsToolbar total={leads.length} filtered={getFilteredLeads().length} />
         {viewMode === 'table' ? <LeadsTable /> : <LeadsKanban />}
       </div>
 

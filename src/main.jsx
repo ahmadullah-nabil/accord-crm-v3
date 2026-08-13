@@ -1,20 +1,15 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+// One shared instance, so leadsStore can invalidate from outside the React tree.
+import { queryClient } from './lib/queryClient.js'
 import App from './App.jsx'
 import './index.css'
 import { useAuthStore }    from './stores/authStore.js'
 import { onAuthStateChange } from './services/authService.js'
 
 // ── React Query client ────────────────────────────────────────────────────────
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5,
-      retry: 1,
-    },
-  },
-})
+// queryClient now lives in lib/queryClient.js — see the note there.
 
 // ── Boot auth ─────────────────────────────────────────────────────────────────
 // 1. Wire the Supabase auth state listener so the store stays in sync with

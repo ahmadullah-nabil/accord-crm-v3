@@ -30,6 +30,12 @@ import { Search, X, SlidersHorizontal } from 'lucide-react'
 export function ViewHeader({
   title,                 // 'All contacts'
   count,                 // rows after filtering
+  leading,               // ReactNode — sits beside the count, LEFT side.
+                         // For controls that change how the same rows are
+                         // presented (Leads' Table/Kanban toggle) or which
+                         // subset is the subject (All / Mine). Those are not
+                         // `actions`: an action does something to the data,
+                         // and these only change the frame you view it in.
   total,                 // rows before filtering — shown only when they differ
   search,                // { value, onChange, placeholder }
   filters = [],          // [{ label, value, onChange, options: string[] }]
@@ -48,6 +54,7 @@ export function ViewHeader({
             <span className="text-gray-300"> of {total}</span>
           )}
         </span>
+        {leading && <div className="flex items-center gap-1.5 ml-1.5">{leading}</div>}
       </div>
 
       {/* ── Right: what changes it ────────────────────────────────────── */}

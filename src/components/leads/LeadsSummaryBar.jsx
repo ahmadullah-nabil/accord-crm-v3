@@ -1,60 +1,64 @@
+// ─── LeadsSummaryBar ──────────────────────────────────────────────────────────
+//
+// step041. Seven KPI cards → one row of chips, matching Contacts.
+//
+// WHAT WENT AND WHY
+// ─────────────────
+// The old bar was a 7-across grid of ~72px cards with shadows, hover lifts and
+// uppercase micro-labels — roughly 100px of vertical space above a table whose
+// job is showing rows. Same counts, same filter behaviour, no furniture.
+//
+// The per-stage MONEY SUBTOTALS are gone from the chips deliberately. A chip is
+// a filter with a count on it; a second number inside it competes with the
+// first and neither reads cleanly at 13px. Total pipeline value has not been
+// dropped — it moved to the table's aggregate footer, which is the row already
+// dedicated to totals, and where it sits next to the row count it belongs with.
+//
+// WIN RATE was a pill that was never clickable — `active={false}` and no
+// onClick. It looked exactly like the six filters beside it and did nothing
+// when pressed. A control that cannot be operated should not be shaped like
+// one, so it is now plain text next to the chips.
+//
+// Won and Lost were excluded from the old per-stage pills, so filtering to
+// either was impossible from here even though both are real stages. They are
+// included now: the chip row is the stage filter, and a stage missing from it
+// is a stage you cannot reach.
+
 import React from 'react'
 import { useLeadsStore, STAGES, STAGE_COLORS } from '../../stores/leadsStore.js'
-
-const fmt = (n) =>
-  n >= 1000000 ? `৳${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `৳${(n / 1000).toFixed(0)}K` : `৳${n}`
+import { FacetChips } from '../ui/FacetChips.jsx'
 
 export function LeadsSummaryBar() {
   const { leads, stageFilter, setStageFilter } = useLeadsStore()
 
-  const total = leads.length
-  const totalValue = leads.reduce((s, l) => s + l.value, 0)
-  const wonCount = leads.filter((l) => l.stage === 'Won').length
-  const convRate = total > 0 ? ((wonCount / total) * 100).toFixed(1) : '0.0'
+  const total     = leads.length
+  const wonCount  = leads.filter((l) => l.stage === 'Won').length
+  const winRate   = total > 0 ? ((wonCount / total) * 100).toFixed(1) : '0.0'
+
+  const items = [
+    { key: 'All', label: 'All', count: total },
+    ...STAGES.map((stage) => ({
+      key:      stage,
+      label:    stage,
+      count:    leads.filter((l) => l.stage === stage).length,
+      // STAGE_COLORS entries carry a `bg` class already used for the old dots.
+      // Kept as the single source of per-stage colour rather than inventing a
+      // second mapping that could drift from the Kanban's.
+      dotClass: STAGE_COLORS[stage]?.bg,
+    })),
+  ]
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
-      {/* Overall stats */}
-      <StatPill label="Total Leads" value={total} sub={`৳${fmt(totalValue)} pipeline`} active={stageFilter === 'All'} onClick={() => setStageFilter('All')} color="bg-gray-900 text-white" />
-      <StatPill label="Win Rate" value={`${convRate}%`} sub={`${wonCount} won`} active={false} color="bg-emerald-500 text-white" />
-
-      {/* Per-stage pills */}
-      {STAGES.filter((s) => !['Won', 'Lost'].includes(s)).map((stage) => {
-        const count = leads.filter((l) => l.stage === stage).length
-        const value = leads.filter((l) => l.stage === stage).reduce((s, l) => s + l.value, 0)
-        const sc = STAGE_COLORS[stage]
-        return (
-          <StatPill
-            key={stage}
-            label={stage}
-            value={count}
-            sub={fmt(value)}
-            active={stageFilter === stage}
-            onClick={() => setStageFilter(stageFilter === stage ? 'All' : stage)}
-            dotColor={sc.bg}
-          />
-        )
-      })}
+    <div className="flex items-center gap-3 flex-wrap">
+      <FacetChips items={items} value={stageFilter} onChange={setStageFilter} />
+      {total > 0 && (
+        <span className="text-xs text-gray-400 flex-shrink-0">
+          <span className="tnum text-gray-500 font-medium">{winRate}%</span> win rate
+          <span className="text-gray-300"> · {wonCount} won</span>
+        </span>
+      )}
     </div>
   )
 }
 
-function StatPill({ label, value, sub, active, onClick, color, dotColor }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`text-left rounded-xl px-4 py-3 transition-all duration-200 border
-        ${active
-          ? 'bg-teal-500 text-white border-teal-500 shadow-glow-teal'
-          : 'bg-white border-gray-100 shadow-card hover:shadow-card-md hover:-translate-y-0.5'
-        }`}
-    >
-      <div className="flex items-center gap-1.5 mb-1">
-        {dotColor && <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />}
-        <p className={`text-[10px] font-semibold uppercase tracking-wider ${active ? 'text-teal-100' : 'text-gray-500'}`}>{label}</p>
-      </div>
-      <p className={`font-display font-bold text-lg leading-tight ${active ? 'text-white' : 'text-gray-900'}`}>{value}</p>
-      <p className={`text-[10px] mt-0.5 font-mono ${active ? 'text-teal-100' : 'text-gray-400'}`}>{sub}</p>
-    </button>
-  )
-}
+export default LeadsSummaryBar
