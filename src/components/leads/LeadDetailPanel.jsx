@@ -4,7 +4,7 @@ import {
   DollarSign, TrendingUp, Pencil, Trash2, Globe,
   Plus, Clock, CheckCircle2, XCircle, RefreshCw,
   Activity, UserPlus, ArrowRight, FileText, RotateCcw,
-  AlertCircle, Circle,
+  AlertCircle, Circle, Paperclip,
 } from 'lucide-react'
 import { useLeadsStore, STAGE_COLORS, PRIORITY_COLORS } from '../../stores/leadsStore.js'
 import { useMeetingsStore }        from '../../stores/meetingsStore.js'
@@ -17,6 +17,7 @@ import { useRoleByName }           from '../../hooks/useTeam.js'
 import { STATUS_CONFIG, formatMeetingDateTime } from '../../lib/meetingsData.js'
 import { STATUS_CONFIG as TASK_STATUS_CONFIG }  from '../../lib/tasksData.js'
 import { TimelinePanel }           from '../timeline/TimelinePanel.jsx'
+import { AttachmentPanel }         from '../attachments/AttachmentPanel.jsx'
 import { EmailComposer }           from '../email/EmailComposer.jsx'
 import { Avatar }                  from '../ui/Avatar.jsx'
 import { Skeleton }                from '../ui/Skeleton.jsx'
@@ -347,6 +348,14 @@ export function LeadDetailPanel() {
               </Section>
 
               {/* ── Unified Timeline ─────────────────────────────────────────── */}
+              {/* ── Files ──────────────────────────────────────────────────────
+                  Above the timeline and below Tasks: it is current state, not
+                  history. `compact` drops the duplicate heading, since Section
+                  already renders one. */}
+              <Section title="Files" icon={Paperclip}>
+                <AttachmentPanel relatedType="lead" relatedId={lead.id} compact />
+              </Section>
+
               <TimelinePanel
                 entityType="lead"
                 entityId={selectedLeadId}
