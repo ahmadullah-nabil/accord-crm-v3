@@ -96,6 +96,10 @@ export function useCreateTask() {
         if (newTask.relatedType === 'Lead' && newTask.relatedId) {
           invalidateAct('lead', newTask.relatedId)
         }
+        // step045 — see the matching note in useMeetings.js.
+        if (newTask.relatedType === 'Opportunity' && newTask.relatedId) {
+          invalidateAct('opportunity', newTask.relatedId)
+        }
       })
 
       // Notify the assignee — onSuccess only, so an insert that failed can
@@ -265,6 +269,34 @@ export function useLeadTasks(leadId) {
           (t) =>
             t.relatedId === String(leadId) &&
             t.relatedType === 'Lead',
+        )
+        .sort((a, b) => {
+          if (!a.dueDate) return 1
+          if (!b.dueDate) return -1
+          return a.dueDate.localeCompare(b.dueDate)
+        }),
+  })
+}
+
+// ── useOpportunityTasks — tasks linked to a specific deal ─────────────────────
+//
+// step045. Matches useLeadTasks exactly, on 'Opportunity'. See the note in
+// lib/tasksData.js for why that value did not exist until now and what the deal
+// panel was writing instead.
+export function useOpportunityTasks(oppId) {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+
+  return useQuery({
+    queryKey: taskKeys.all(),
+    queryFn:  getTasks,
+    staleTime: 1000 * 60 * 2,
+    enabled:   isAuthenticated && Boolean(oppId),
+    select: (tasks) =>
+      tasks
+        .filter(
+          (t) =>
+            t.relatedId === String(oppId) &&
+            t.relatedType === 'Opportunity',
         )
         .sort((a, b) => {
           if (!a.dueDate) return 1

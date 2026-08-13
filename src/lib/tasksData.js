@@ -256,7 +256,13 @@ export const TASK_TYPES      = ['Task', 'Follow-up', 'Call', 'Deadline']
 export const TASK_PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 // Derived from the central team registry in lib/users.js
 export const TASK_ASSIGNEES  = _TASK_MEMBER_NAMES
-export const RELATED_TYPES   = ['Lead', 'Contact', 'Meeting', 'None']
+// step045. 'Opportunity' added — same reason as meetingsData.js.
+//
+// The deal panel's "Add Task" was worse than the meeting case: it sent
+// `relatedType: 'Meeting'` with an opportunity id, filing follow-ups against a
+// phantom meeting. Capitalised to match the four values already stored in
+// tasks.related_type.
+export const RELATED_TYPES   = ['Lead', 'Contact', 'Opportunity', 'Meeting', 'None']
 
 export const STATUS_CONFIG = {
   'Todo':        { label: 'Todo',        color: 'bg-gray-100 text-gray-600',      dot: 'bg-gray-400',     icon: '○' },

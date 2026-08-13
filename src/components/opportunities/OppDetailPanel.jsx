@@ -1,48 +1,95 @@
-import React from 'react'
+// ─── OppDetailPanel ───────────────────────────────────────────────────────────
+//
+// step045. The one-long-scroll panel is now a tabbed record surface, matching
+// Leads and Contacts.
+//
+// WHAT CHANGED
+// ────────────
+// Before: a 400px panel with three KPI tiles and six stacked <Section> blocks —
+// Details, Assignee, Notes, Tags, Actions, Files — plus a timeline at the
+// bottom. Reaching the timeline meant scrolling past every field every time,
+// and there was no way to see the deal's tasks or meetings at all.
+//
+// Now: fields live in collapsible groups at the top, and everything RELATED to
+// the deal (timeline, tasks, meetings, files, emails) is a tab. The field
+// definitions, the badges, the header actions and the tab list all come from
+// OppRecordContent, which OppRecordPage also uses — so the two surfaces cannot
+// disagree.
+//
+// THE TWO QUICK-ACTION BUTTONS ARE GONE, AND THEIR BUG WITH THEM
+// ──────────────────────────────────────────────────────────────
+// "Schedule Meeting" sent `relatedType: 'Lead'` with an opportunity id; "Add
+// Task" sent `relatedType: 'Meeting'`, also with an opportunity id. Both filed
+// the new row against a record that does not exist, so it showed up on no
+// record's list while /meetings labelled it "Lead". Those affordances now live
+// on the Tasks and Meetings tabs, next to the list they add to, and write
+// 'Opportunity' — a value that exists as of step045.
+//
+// THE THREE KPI TILES ARE GONE. Value, Probability and Exp. Revenue are three
+// numbers about the same deal, and expected revenue is DERIVED from the other
+// two, so a tile that emphasises it as an independent figure implies a third
+// fact where there are two. They are fields in the Deal group now, and Value
+// and Probability also sit in the badge row where they are visible on any tab.
+//
+// RECORD NAVIGATION WALKS THE FILTERED LIST — the up/down arrows step through
+// applyFilters(allOpps), not every deal. If they walked the unfiltered set they
+// would navigate into rows the user cannot see behind the panel, and "3 of 7"
+// would contradict the seven rows on screen.
+//
+// EVERY PERMISSION GATE IS CARRIED OVER UNCHANGED: Edit and Delete on canEdit /
+// canDelete, and the tab add-affordances on canEdit, which is what gated the
+// old Actions block.
+
+import React, { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
+
+import { useOpportunitiesStore }    from '../../stores/opportunitiesStore.js'
 import {
-  X, Building2, Mail, Phone, DollarSign,
-  TrendingUp, Calendar, Tag, Pencil, Trash2, User, Paperclip,
-} from 'lucide-react'
-import { useOpportunitiesStore, OPP_STAGE_COLORS } from '../../stores/opportunitiesStore.js'
-import { useOpportunity, useDeleteOpportunity } from '../../hooks/useOpportunities.js'
-import { useOpportunityPermissions }  from '../../hooks/usePermissions.js'
-import { useRoleByName }              from '../../hooks/useTeam.js'
-import { useMeetingsStore }    from '../../stores/meetingsStore.js'
-import { useTasksStore }       from '../../stores/tasksStore.js'
-import { TimelinePanel }           from '../timeline/TimelinePanel.jsx'
-import { AttachmentPanel }        from '../attachments/AttachmentPanel.jsx'
-import { Avatar }              from '../ui/Avatar.jsx'
-import { Skeleton }            from '../ui/Skeleton.jsx'
+  useOpportunity, useOpportunities, useDeleteOpportunity,
+} from '../../hooks/useOpportunities.js'
+import { useOpportunityPermissions } from '../../hooks/usePermissions.js'
+import { useRoleByName }            from '../../hooks/useTeam.js'
+import { Avatar }                   from '../ui/Avatar.jsx'
+import { RecordShell }              from '../ui/RecordShell.jsx'
+import { EmailComposer }            from '../email/EmailComposer.jsx'
 import {
-  Activity, UserPlus, ArrowRight, CheckCircle2,
-  RotateCcw, FileText,
-} from 'lucide-react'
-import { localISODate } from '../../lib/dates.js'
-
-const fmt = (n) =>
-  n >= 1_000_000 ? `৳${(n / 1_000_000).toFixed(1)}M`
-  : n >= 1_000   ? `৳${(n / 1_000).toFixed(0)}K`
-  : `৳${n}`
-
-
+  OppFields, OppBadges, OppActions, useOppTabs,
+} from './OppRecordContent.jsx'
 
 export function OppDetailPanel() {
+  const navigate = useNavigate()
   const {
-    detailPanelOpen, closeDetail, selectedOppId, openEditModal,
+    detailPanelOpen, closeDetail, openDetail, selectedOppId,
+    openEditModal, applyFilters,
   } = useOpportunitiesStore()
-
-  const { openAddModalWithPrefill: scheduleMeeting } = useMeetingsStore()
-  const { openAddModalWithPrefill: createTask }      = useTasksStore()
-  const deleteMutation = useDeleteOpportunity()
 
   const { data: opp, isLoading } = useOpportunity(
     detailPanelOpen ? selectedOppId : null
   )
-
-
+  const deleteMutation = useDeleteOpportunity()
 
   const perms = useOpportunityPermissions(opp)
+  const tabs  = useOppTabs(opp, perms)
   const assigneeRole = useRoleByName(opp?.assignee)
+
+  const [composerOpen, setComposerOpen] = React.useState(false)
+
+  // The visible, filtered order — see the note above on why this and not the
+  // raw list. Shares the ['opportunities'] cache entry with the page behind it,
+  // so this is a cache read rather than a second fetch.
+  const { data: allOpps = [] } = useOpportunities()
+  const ordered = applyFilters(allOpps)
+
+  const nav = useMemo(() => {
+    const index = ordered.findIndex((o) => o.id === selectedOppId)
+    if (index === -1) return null
+    return {
+      index,
+      total: ordered.length,
+      onPrev: () => index > 0 && openDetail(ordered[index - 1].id),
+      onNext: () => index < ordered.length - 1 && openDetail(ordered[index + 1].id),
+    }
+  }, [ordered, selectedOppId, openDetail])
 
   const handleDelete = () => {
     if (!opp) return
@@ -51,202 +98,42 @@ export function OppDetailPanel() {
     }
   }
 
-  const handleScheduleMeeting = () => {
-    if (!opp) return
-    scheduleMeeting({
-      relatedType: 'Lead', relatedId: opp.id,
-      relatedLabel: `${opp.title} — ${opp.company}`,
-      title: `Meeting — ${opp.company}`,
-    })
-  }
-
-  const handleCreateTask = () => {
-    if (!opp) return
-    const nextWeek = (() => {
-      const d = new Date(); d.setDate(d.getDate() + 7)
-      return localISODate(d)
-    })()
-    createTask({
-      relatedType: 'Meeting', relatedId: opp.id,
-      relatedLabel: opp.title,
-      title: `Follow-up: ${opp.title}`,
-      dueDate: nextWeek, assignee: opp.assignee || '',
-    })
-  }
-
-  const sc = opp ? (OPP_STAGE_COLORS[opp.stage] ?? OPP_STAGE_COLORS.New) : OPP_STAGE_COLORS.New
-
   return (
     <>
-      {detailPanelOpen && (
-        <div className="fixed inset-0 bg-black/20 z-30" onClick={closeDetail} />
-      )}
+      <RecordShell
+        variant="panel"
+        open={detailPanelOpen}
+        onClose={closeDetail}
+        // Deep-linkable full record. Closing the panel first is this caller's
+        // job — OppRecordPage is a different route and never mounts it.
+        onExpand={opp ? () => { closeDetail(); navigate(`/opportunities/${opp.id}`) } : undefined}
+        isLoading={isLoading}
+        avatar={opp ? <Avatar name={opp.company || opp.title} size="md" /> : null}
+        title={opp?.title ?? 'Loading…'}
+        subtitle={opp?.company}
+        badges={opp ? <OppBadges opp={opp} /> : null}
+        nav={nav}
+        actions={
+          <OppActions
+            opp={opp}
+            perms={perms}
+            onEmail={() => setComposerOpen(true)}
+            onEdit={() => openEditModal(opp.id)}
+            onDelete={handleDelete}
+          />
+        }
+        fields={<OppFields opp={opp} assigneeRole={assigneeRole} />}
+        tabs={tabs}
+      />
 
-      <div className={`
-        fixed inset-y-0 right-0 z-40 w-[400px] max-w-full bg-white shadow-card-lg
-        flex flex-col transition-transform duration-300 ease-in-out
-        ${detailPanelOpen ? 'translate-x-0' : 'translate-x-full'}
-      `}>
-        {isLoading ? (
-          <div className="p-5 space-y-4">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-24 w-full rounded-xl" />
-          </div>
-        ) : !opp ? null : (
-          <>
-            {/* Header */}
-            <div className="p-5 border-b border-gray-100 flex-shrink-0">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="min-w-0">
-                  <h3 className="font-display font-bold text-base text-gray-900 leading-snug">{opp.title}</h3>
-                  {opp.company && (
-                    <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                      <Building2 size={11} /> {opp.company}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  {perms.canEdit && (
-                    <button onClick={() => openEditModal(opp.id)} className="p-2 rounded-xl text-gray-400 hover:text-teal-600 hover:bg-teal-50 transition-colors" title="Edit">
-                      <Pencil size={15} />
-                    </button>
-                  )}
-                  {perms.canDelete && (
-                    <button onClick={handleDelete} className="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Delete">
-                      <Trash2 size={15} />
-                    </button>
-                  )}
-                  <button onClick={closeDetail} className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
-                    <X size={15} />
-                  </button>
-                </div>
-              </div>
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${sc.light}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${sc.bg}`} />
-                {opp.stage}
-              </span>
-            </div>
-
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
-              {/* Financials */}
-              <div className="grid grid-cols-3 gap-3">
-                <FinCard icon={DollarSign}  label="Value"       value={fmt(opp.value)} />
-                <FinCard icon={TrendingUp}  label="Probability" value={`${opp.probability}%`} />
-                <FinCard icon={DollarSign}  label="Exp. Revenue" value={fmt(opp.expectedRevenue)} color="text-emerald-600" />
-              </div>
-
-              <Section title="Details">
-                <InfoRow icon={Calendar} label="Close Date"  value={opp.expectedCloseDate || '—'} />
-                <InfoRow icon={Mail}     label="Email"       value={opp.email} href={opp.email ? `mailto:${opp.email}` : null} />
-                <InfoRow icon={Phone}    label="Phone"       value={opp.phone} href={opp.phone ? `tel:${opp.phone}` : null} />
-                <InfoRow icon={Calendar} label="Created"     value={opp.createdAt} />
-              </Section>
-
-              {opp.assignee && (
-                <Section title="Assignee">
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                    <Avatar name={opp.assignee} size="md" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{opp.assignee}</p>
-                      {assigneeRole && (
-                        <p className="text-xs text-gray-400">{assigneeRole}</p>
-                      )}
-                    </div>
-                  </div>
-                </Section>
-              )}
-
-              {opp.notes && (
-                <Section title="Notes">
-                  <p className="text-sm text-gray-600 bg-gray-50 rounded-xl p-3 leading-relaxed">{opp.notes}</p>
-                </Section>
-              )}
-
-              {opp.tags?.length > 0 && (
-                <Section title="Tags">
-                  <div className="flex flex-wrap gap-2">
-                    {opp.tags.map((t) => (
-                      <span key={t} className="flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-medium">
-                        <Tag size={10} /> {t}
-                      </span>
-                    ))}
-                  </div>
-                </Section>
-              )}
-
-              {/* Quick actions */}
-              {(perms.canEdit) && (
-                <Section title="Actions">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleScheduleMeeting}
-                      className="flex-1 text-xs font-semibold py-2 px-3 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <Calendar size={12} /> Schedule Meeting
-                    </button>
-                    <button
-                      onClick={handleCreateTask}
-                      className="flex-1 text-xs font-semibold py-2 px-3 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <CheckCircle2 size={12} /> Add Task
-                    </button>
-                  </div>
-                </Section>
-              )}
-
-              {/* ── Files ──────────────────────────────────────────────── */}
-              <Section title="Files" icon={Paperclip}>
-                <AttachmentPanel relatedType="opportunity" relatedId={opp.id} compact />
-              </Section>
-
-              {/* ── Unified Timeline ───────────────────────────────────── */}
-              <TimelinePanel
-                entityType="opportunity"
-                entityId={opp.id}
-                entityLabel={opp.title}
-              />
-            </div>
-          </>
-        )}
-      </div>
+      <EmailComposer
+        open={composerOpen && Boolean(opp)}
+        onClose={() => setComposerOpen(false)}
+        record={opp}
+        relatedType="opportunity"
+      />
     </>
   )
 }
 
-function FinCard({ icon: Icon, label, value, color = 'text-gray-900' }) {
-  return (
-    <div className="bg-gray-50 rounded-xl p-3 text-center">
-      <Icon size={14} className="text-gray-400 mx-auto mb-1" />
-      <p className={`font-display font-bold text-sm ${color}`}>{value}</p>
-      <p className="text-[10px] text-gray-400 mt-0.5">{label}</p>
-    </div>
-  )
-}
-
-function Section({ title, icon: Icon, children }) {
-  return (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2 flex items-center gap-1">
-        {Icon && <Icon size={10} className="text-gray-300" />}
-        {title}
-      </p>
-      <div className="space-y-1.5">{children}</div>
-    </div>
-  )
-}
-
-function InfoRow({ icon: Icon, label, value, href }) {
-  return (
-    <div className="flex items-center gap-3 py-1">
-      <Icon size={13} className="text-gray-400 flex-shrink-0" />
-      <span className="text-xs text-gray-500 w-24 flex-shrink-0">{label}</span>
-      {href ? (
-        <a href={href} onClick={(e) => e.stopPropagation()} className="text-sm text-teal-600 hover:underline font-medium truncate">{value}</a>
-      ) : (
-        <span className="text-sm text-gray-800 font-medium truncate">{value || '—'}</span>
-      )}
-    </div>
-  )
-}
+export default OppDetailPanel

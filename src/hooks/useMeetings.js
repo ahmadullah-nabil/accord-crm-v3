@@ -92,6 +92,12 @@ export function useCreateMeeting() {
         if (newMeeting.relatedType === 'Lead' && newMeeting.relatedId) {
           invalidateAct('lead', newMeeting.relatedId)
         }
+        // step045. Without this the deal's Timeline tab keeps its cached copy
+        // and the meeting you just scheduled is absent until a hard reload —
+        // which reads as the write having failed.
+        if (newMeeting.relatedType === 'Opportunity' && newMeeting.relatedId) {
+          invalidateAct('opportunity', newMeeting.relatedId)
+        }
       })
 
       // Notify the organizer. Only the organizer is notified: notifyMeetingScheduled
@@ -220,6 +226,33 @@ export function useContactMeetings(contactId) {
     select: (meetings) =>
       meetings
         .filter((m) => m.relatedId === String(contactId) && m.relatedType === 'Contact')
+        .sort((a, b) => {
+          const at = `${a.scheduledDate || ''}T${a.scheduledTime || ''}`
+          const bt = `${b.scheduledDate || ''}T${b.scheduledTime || ''}`
+          return bt.localeCompare(at)
+        }),
+  })
+}
+
+// ── useOpportunityMeetings — meetings linked to a specific deal ───────────────
+//
+// step045. The third per-entity variant, identical in shape to the two above so
+// the deal record reads its meetings the same way a lead does.
+//
+// This hook is why 'Opportunity' had to go into RELATED_TYPES first. A filter
+// is only half a link: writing the correct relatedType is useless if nothing
+// reads it back, and reading is useless if the form cannot produce the value.
+export function useOpportunityMeetings(oppId) {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+
+  return useQuery({
+    queryKey: meetingKeys.all(),
+    queryFn:  getMeetings,
+    staleTime: 1000 * 60 * 2,
+    enabled:   isAuthenticated && Boolean(oppId),
+    select: (meetings) =>
+      meetings
+        .filter((m) => m.relatedId === String(oppId) && m.relatedType === 'Opportunity')
         .sort((a, b) => {
           const at = `${a.scheduledDate || ''}T${a.scheduledTime || ''}`
           const bt = `${b.scheduledDate || ''}T${b.scheduledTime || ''}`

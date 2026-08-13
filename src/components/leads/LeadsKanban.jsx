@@ -1,3 +1,20 @@
+// ─── LeadsKanban ──────────────────────────────────────────────────────────────
+//
+// step045. Density pass, matching OpportunitiesKanban exactly. No behaviour
+// change — same store, same grouping, same drag/drop, same updateStage.
+//
+// The two boards are the only Kanbans in the app and they were already near
+// copies of each other. Changing one and not the other would leave the app with
+// two card densities for the same gesture, which is the drift this project keeps
+// paying for. See the fuller note in OpportunitiesKanban.jsx.
+//
+// The negative-translate hover lift is gone here too — open item 1, now
+// closed for both boards. Nothing else uses it.
+//
+// NOTHING WAS DROPPED. Priority, value, name, company, assignee and source are
+// all still on the card; priority and value share the meta row with the
+// assignee instead of each holding a line behind a divider.
+
 import React from 'react'
 import { useLeadsStore, STAGES, STAGE_COLORS, PRIORITY_COLORS } from '../../stores/leadsStore.js'
 import { Avatar } from '../ui/Avatar.jsx'
@@ -15,7 +32,7 @@ export function LeadsKanban() {
   }, {})
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-4 min-h-[520px]">
+    <div className="flex gap-2 overflow-x-auto pb-3 min-h-[420px]">
       {STAGES.map((stage) => (
         <KanbanColumn
           key={stage}
@@ -36,7 +53,7 @@ function KanbanColumn({ stage, leads, onCardClick, onDrop }) {
 
   return (
     <div
-      className={`flex-shrink-0 w-[220px] flex flex-col rounded-xl transition-all duration-150
+      className={`flex-shrink-0 w-[220px] flex flex-col rounded-lg transition-colors duration-120
         ${dragOver ? 'bg-teal-50/60 ring-2 ring-teal-300 ring-dashed' : 'bg-gray-50'}`}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
       onDragLeave={() => setDragOver(false)}
@@ -48,29 +65,27 @@ function KanbanColumn({ stage, leads, onCardClick, onDrop }) {
       }}
     >
       {/* Column header */}
-      <div className="px-3 pt-3 pb-2">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${sc.bg}`} />
-            <span className="text-xs font-semibold text-gray-700">{stage}</span>
+      <div className="px-2 pt-2 pb-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${sc.bg}`} />
+            <span className="text-xs font-medium text-gray-700 truncate">{stage}</span>
           </div>
-          <span className="text-xs font-bold text-gray-500 bg-white rounded-full px-2 py-0.5 shadow-sm border border-gray-100">
-            {leads.length}
-          </span>
+          <span className="tnum text-xs text-gray-400 flex-shrink-0">{leads.length}</span>
         </div>
         {leads.length > 0 && (
-          <p className="text-[10px] text-gray-400 font-mono pl-4">{fmt(total)}</p>
+          <p className="text-[10px] text-gray-400 tnum mt-0.5">{fmt(total)}</p>
         )}
       </div>
 
       {/* Cards */}
-      <div className="flex flex-col gap-2 px-2 pb-3 flex-1">
+      <div className="flex flex-col gap-1.5 px-1.5 pb-1.5 flex-1">
         {leads.map((lead) => (
           <KanbanCard key={lead.id} lead={lead} onClick={() => onCardClick(lead.id)} />
         ))}
 
         {leads.length === 0 && (
-          <div className="flex-1 flex items-center justify-center min-h-[80px]">
+          <div className="flex-1 flex items-center justify-center min-h-[60px]">
             <p className="text-[11px] text-gray-300 text-center">Drop here</p>
           </div>
         )}
@@ -87,30 +102,28 @@ function KanbanCard({ lead, onClick }) {
       draggable
       onDragStart={(e) => e.dataTransfer.setData('leadId', lead.id)}
       onClick={onClick}
-      className="bg-white rounded-xl p-3 shadow-card border border-gray-100 cursor-pointer
-                 hover:shadow-card-md hover:-translate-y-0.5 transition-all duration-150 group"
+      className="bg-white rounded-lg px-2.5 py-2 border border-gray-200 cursor-pointer
+                 hover:border-gray-300 hover:bg-gray-50 transition-colors duration-120 group"
     >
-      {/* Priority dot + value */}
-      <div className="flex items-center justify-between mb-2">
-        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${pc}`}>
-          {lead.priority}
-        </span>
-        <span className="text-[10px] font-mono font-semibold text-gray-500">{fmt(lead.value)}</span>
-      </div>
-
-      {/* Name + company */}
-      <p className="text-xs font-semibold text-gray-900 leading-tight mb-0.5 group-hover:text-teal-700 transition-colors">
+      <p className="text-xs font-medium text-gray-900 leading-snug truncate
+        group-hover:text-teal-700 transition-colors duration-120">
         {lead.name}
       </p>
-      <p className="text-[10px] text-gray-400 mb-2 truncate">{lead.company}</p>
+      <p className="text-[11px] text-gray-400 truncate mt-0.5">{lead.company}</p>
 
-      {/* Footer */}
-      <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-        <div className="flex items-center gap-1.5">
-          <Avatar name={lead.assignee} size="xs" />
-          <span className="text-[10px] text-gray-400">{lead.assignee.split(' ')[0]}</span>
-        </div>
-        <span className="text-[10px] text-gray-300">{lead.source}</span>
+      <div className="flex items-center gap-1.5 mt-1.5">
+        <span className={`text-[10px] font-medium px-1 py-0.5 rounded ${pc}`}>
+          {lead.priority}
+        </span>
+        <span className="text-xs font-medium text-gray-800 tnum">{fmt(lead.value)}</span>
+        {lead.source && (
+          <span className="text-[10px] text-gray-400 truncate">· {lead.source}</span>
+        )}
+        {lead.assignee && (
+          <span className="ml-auto flex-shrink-0" title={lead.assignee}>
+            <Avatar name={lead.assignee} size="xs" />
+          </span>
+        )}
       </div>
     </div>
   )

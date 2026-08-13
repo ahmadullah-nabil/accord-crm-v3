@@ -300,7 +300,20 @@ export const MEETING_STATUSES  = ['Scheduled', 'Completed', 'Cancelled', 'Resche
 export const MEETING_TYPES     = ['Demo', 'Discovery', 'Negotiation', 'Technical Review', 'Kickoff', 'Proposal', 'Partner Sync', 'Follow-up']
 // Derived from the central team registry in lib/users.js
 export const MEETING_ORGANIZERS = _MTG_MEMBER_NAMES
-export const RELATED_TYPES     = ['Lead', 'Contact', 'None']
+// step045. 'Opportunity' added so a meeting can be attributed to a deal.
+//
+// Until now the deal surfaces sent `relatedType: 'Lead'` with an OPPORTUNITY
+// id, so the meeting was filed against a lead that does not exist: it appeared
+// on no record's Meetings list while /meetings displayed it labelled "Lead".
+// A write that succeeds and lands nowhere findable.
+//
+// Capitalised to match Lead and Contact, which is how meetings.related_type is
+// already stored. NOTE: migration 025's crm_entity_type domain is lowercase and
+// is deliberately attached to no column — this adds one more value to whoever
+// eventually normalises the casing, and does NOT create a new class of problem.
+// See the landmine note in HANDOVER-FRONTEND-2.md. Do not attach that domain as
+// a side effect of anything.
+export const RELATED_TYPES     = ['Lead', 'Contact', 'Opportunity', 'None']
 export const LOCATION_TYPES    = ['Google Meet', 'Zoom', 'Microsoft Teams', 'On-site', 'Phone Call', 'Other']
 export const DURATION_OPTIONS  = [15, 30, 45, 60, 90, 120]
 

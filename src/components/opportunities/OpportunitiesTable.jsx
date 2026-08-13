@@ -207,9 +207,20 @@ export function OpportunitiesTable({ opportunities = [], isLoading }) {
           perms.canEdit && {
             label: 'Schedule meeting',
             icon: Calendar,
-            // No relatedType/relatedId — see note 1 at the top of this file.
-            // Omitting them lets MeetingFormModal's 'None' default stand.
+            // step045: the relation is back, and correct this time.
+            //
+            // step044 stripped relatedType/relatedId here because the prefill
+            // sent 'Lead' with an opportunity id — a meeting filed against a
+            // record that does not exist. Leaving it unattributed was the safe
+            // move while 'Opportunity' was not a value the form could produce.
+            // It is now, so the deal's Meetings tab can actually find this.
+            //
+            // Kept identical to the tab's prefill in OppRecordContent on
+            // purpose: two surfaces that schedule against the same deal must
+            // not write two different shapes of the same link.
             onClick: () => openAddModalWithPrefill({
+              relatedType: 'Opportunity', relatedId: o.id,
+              relatedLabel: [o.title, o.company].filter(Boolean).join(' — '),
               title: `Meeting — ${o.company || o.title}`,
             }),
           },
