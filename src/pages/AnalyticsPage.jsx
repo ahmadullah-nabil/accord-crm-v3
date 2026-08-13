@@ -33,10 +33,37 @@
 // │ range are independent: picking Leads must not reset the range, and       │
 // │ changing the range must not move you to another section. Each control   │
 // │ reads only its own state.                                                │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │ step057 — THE PAGE FITS THE VIEWPORT. HEIGHT IS PASSED DOWN, NOT PICKED │
+// ├─────────────────────────────────────────────────────────────────────────┤
+// │ step056's last note said the chart components were its own batch. This  │
+// │ is that batch, and it is the step055 pattern one level lower:            │
 // │                                                                          │
-// │ EVERY CHART COMPONENT IS UNTOUCHED. This batch moved them and stopped   │
-// │ fetching for the ones you cannot see. It did not restyle a single axis  │
-// │ or legend — those are their own files and their own batch.               │
+// │   root      `h-full flex flex-col min-h-0`                               │
+// │   header    `shrink-0`   — one line, always                              │
+// │   figures   `shrink-0`   — one or two 46px lines                         │
+// │   charts    `flex-1 min-h-0` — the one region that flexes                │
+// │                                                                          │
+// │ `AppLayout` already passes `h-full` down (step055), so this page can ask │
+// │ for the height that is left. Nothing here is sized to fit: no            │
+// │ `max-h-[Npx]`, no `height={280}`. The four heights the calendar burned   │
+// │ through are the reason.                                                  │
+// │                                                                          │
+// │ ONE FLOOR, NOT A HEIGHT. Each chart wrapper carries `min-h-[240px]` and  │
+// │ the region scrolls. A floor and a fixed height are not the same thing —  │
+// │ a floor says "below this an axis is unreadable" and lets the chart grow  │
+// │ past it; a height says "be exactly this" and loses to a bookmarks bar.   │
+// │ Same distinction as handover #4 invariant 4: the calendar cell had a     │
+// │ floor because it had to hold a title.                                    │
+// │                                                                          │
+// │ ONLY OVERVIEW IS ON `fill` IN THIS BATCH. `ChartCard`'s `fill` prop      │
+// │ defaults to false, so Leads / Activity / Team render exactly as they did │
+// │ — they keep their own heights and their region scrolls. They pick up the │
+// │ theming for free (it lives in ChartShared), and converting them is       │
+// │ step058. Do not convert them here just because it looks easy: five more  │
+// │ files in this batch is five more things a screenshot has to disprove.    │
 // └─────────────────────────────────────────────────────────────────────────┘
 
 import React from 'react'
@@ -80,6 +107,14 @@ const SECTION_IDS = SECTIONS.map((s) => s.id)
  *  it should keep the readable name. */
 const RANGE_SHORT = { '7d': '7d', '30d': '30d', '90d': '90d', '1y': 'Year' }
 
+/** The floor, in one place. Below this an axis stops being readable, so the
+ *  region scrolls instead of squashing. Not a height — see the header. */
+const CHART_FLOOR = 'min-h-[240px]'
+
+/** Sections that are not yet on `fill` scroll their own region rather than the
+ *  window, so the header and the section control never leave the screen. */
+const SCROLL_REGION = 'flex-1 min-h-0 overflow-y-auto'
+
 export function AnalyticsPage() {
   const { selectedRange, setRange } = useAnalyticsStore()
   const range = selectedRange
@@ -110,12 +145,12 @@ export function AnalyticsPage() {
   const activity = useAnalyticsActivity(range, on('team'))
 
   return (
-    <div className="space-y-3 max-w-[1600px]">
+    <div className="h-full min-h-0 flex flex-col gap-2 max-w-[1600px]">
       {/* ── One line: what you are looking at, and over what period ───────
           The icon tile and the subtitle are gone. A 36px indigo square next
           to the word "Analytics" on the Analytics page labels nothing, and
           the subtitle described the page to someone already on it. */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-3 flex-wrap shrink-0">
         <h1 className="font-display font-bold text-gray-900 text-base leading-tight shrink-0">
           Analytics
         </h1>
@@ -141,49 +176,58 @@ export function AnalyticsPage() {
 
       {section === 'overview' && (
         <>
-          <AnalyticsKpiGrid data={kpi.data} isLoading={kpi.isLoading} />
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
-            <div className="xl:col-span-3">
-              <AnalyticsRevenueChart data={revenue.data || []} isLoading={revenue.isLoading} />
+          {/* Figures are chrome: two 46px lines at most, never flexing. */}
+          <div className="shrink-0">
+            <AnalyticsKpiGrid data={kpi.data} isLoading={kpi.isLoading} />
+          </div>
+
+          {/* The one region that flexes. */}
+          <div className={`grid grid-cols-1 xl:grid-cols-5 gap-2 ${SCROLL_REGION}`}>
+            <div className={`xl:col-span-3 h-full ${CHART_FLOOR}`}>
+              <AnalyticsRevenueChart data={revenue.data || []} isLoading={revenue.isLoading} fill />
             </div>
-            <div className="xl:col-span-2">
-              <AnalyticsPipelineChart data={funnel.data || []} isLoading={funnel.isLoading} />
+            <div className={`xl:col-span-2 h-full ${CHART_FLOOR}`}>
+              <AnalyticsPipelineChart data={funnel.data || []} isLoading={funnel.isLoading} fill />
             </div>
           </div>
         </>
       )}
 
       {section === 'leads' && (
-        <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
-          <div className="xl:col-span-3">
-            <LeadStatsChart data={leads.data || []} isLoading={leads.isLoading} />
-          </div>
-          <div className="xl:col-span-2">
-            <LeadSourceChart data={sources.data || []} isLoading={sources.isLoading} />
+        <div className={SCROLL_REGION}>
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-2">
+            <div className="xl:col-span-3">
+              <LeadStatsChart data={leads.data || []} isLoading={leads.isLoading} />
+            </div>
+            <div className="xl:col-span-2">
+              <LeadSourceChart data={sources.data || []} isLoading={sources.isLoading} />
+            </div>
           </div>
         </div>
       )}
 
       {section === 'activity' && (
-        <>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        <div className={`${SCROLL_REGION} space-y-2`}>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
             <TaskCompletionTrendChart data={tasks.data} isLoading={tasks.isLoading} />
             <TaskBreakdownChart       data={tasks.data} isLoading={tasks.isLoading} />
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
             <MeetingStatusChart data={meetings.data} isLoading={meetings.isLoading} />
             <MeetingTypeChart   data={meetings.data} isLoading={meetings.isLoading} />
           </div>
-        </>
+        </div>
       )}
 
       {section === 'team' && (
-        <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
-          <div className="xl:col-span-3">
-            <TeamPerformanceTable data={team.data} isLoading={team.isLoading} />
-          </div>
-          <div className="xl:col-span-2">
-            <RecentActivityFeed data={activity.data} isLoading={activity.isLoading} />
+        <div className={SCROLL_REGION}>
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-2">
+            <div className="xl:col-span-3">
+              <TeamPerformanceTable data={team.data} isLoading={team.isLoading} />
+            </div>
+            <div className="xl:col-span-2">
+              <RecentActivityFeed data={activity.data} isLoading={activity.isLoading} />
+            </div>
           </div>
         </div>
       )}

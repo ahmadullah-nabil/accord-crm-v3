@@ -1,31 +1,56 @@
+// ─── AnalyticsKpiGrid ─────────────────────────────────────────────────────────
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │ step057 — EIGHT TILES AT 150px BECOME EIGHT FIGURES AT 46px             │
+// ├─────────────────────────────────────────────────────────────────────────┤
+// │ This grid was ~330px of the Overview section — more than the chart       │
+// │ underneath it — and every pixel above the number was decoration:         │
+// │                                                                          │
+// │   · a 40px pastel icon chip that hover-scaled. A dollar sign next to     │
+// │     "Total Revenue" tells a reader nothing the word does not.            │
+// │   · a TrendBadge. EVERY `trend` getKpiSummary returns is hardcoded 0 —   │
+// │     verified in analyticsService.js, all eight of them. Eight badges     │
+// │     reading "— 0%" is not a neutral signal, it is a claim that nothing   │
+// │     moved, made by a service that never measured.                        │
+// │   · "vs previous period" under each one, describing a comparison that    │
+// │     is not being made.                                                   │
+// │   · an accent bar whose width was `Math.min(100, |trend| * 4 + 40)`.     │
+// │     With trend always 0 that is always exactly 40%. Eight bars, all the  │
+// │     same length, encoding nothing.                                       │
+// │                                                                          │
+// │ WHAT REPLACES IT is the Dashboard's figure strip, deliberately to the    │
+// │ pixel: `rounded-xl border px-3 py-1.5`, a 10px uppercase label, a        │
+// │ tabular-figure value. The two pages state figures in one voice now.      │
+// │                                                                          │
+// │ WHEN THE SERVICE LEARNS TO MEASURE, bring TrendBadge back — it is a      │
+// │ good component and it is still imported by the dashboard components      │
+// │ that are unmounted but not deleted. The rule is the one from handover    │
+// │ #4: an arrow is data or it is nothing. Do not restore it as decoration.  │
+// │                                                                          │
+// │ EIGHT ACROSS ONLY AT 2xl. At 1536px+ the eight sit on one 46px line. On  │
+// │ a 1280 laptop "Conversion Rate" would not fit a 131px tile, so it falls  │
+// │ back to 4 × 2, which is still under a third of what it was.              │
+// └─────────────────────────────────────────────────────────────────────────┘
+
 import React from 'react'
-import {
-  DollarSign, Target, TrendingUp, CheckSquare,
-  Calendar, Users, BarChart2, Layers,
-} from 'lucide-react'
-import { TrendBadge } from '../ui/TrendBadge.jsx'
-import { Skeleton }   from '../ui/Skeleton.jsx'
+import { Skeleton } from '../ui/Skeleton.jsx'
 import { fmtCurrency, fmtNum } from '../../lib/analyticsData.js'
 
-const KPI_META = {
-  totalRevenue:       { label: 'Total Revenue',     icon: DollarSign,  color: 'teal',    format: 'currency' },
-  activeLeads:        { label: 'Active Leads',      icon: Target,      color: 'blue',    format: 'num' },
-  conversionRate:     { label: 'Conversion Rate',   icon: TrendingUp,  color: 'emerald', format: 'pct' },
-  dealsWon:           { label: 'Deals Won',         icon: BarChart2,   color: 'purple',  format: 'num' },
-  taskCompletionRate: { label: 'Task Completion',   icon: CheckSquare, color: 'amber',   format: 'pct' },
-  meetingsConducted:  { label: 'Meetings Held',     icon: Calendar,    color: 'indigo',  format: 'num' },
-  avgDealSize:        { label: 'Avg Deal Size',     icon: Layers,      color: 'teal',    format: 'currency' },
-  pipelineValue:      { label: 'Pipeline Value',    icon: Users,       color: 'blue',    format: 'currency' },
-}
+// Order is the reading order: money first, then counts, then rates. The keys
+// are exactly what getKpiSummary returns — a key that is not in the payload
+// renders nothing rather than a zero it did not measure.
+const FIGURES = [
+  { key: 'pipelineValue',      label: 'Pipeline value',  format: 'currency' },
+  { key: 'totalRevenue',       label: 'Total revenue',   format: 'currency' },
+  { key: 'avgDealSize',        label: 'Avg deal size',   format: 'currency' },
+  { key: 'dealsWon',           label: 'Deals won',       format: 'num'      },
+  { key: 'activeLeads',        label: 'Active leads',    format: 'num'      },
+  { key: 'meetingsConducted',  label: 'Meetings held',   format: 'num'      },
+  { key: 'conversionRate',     label: 'Conversion',      format: 'pct'      },
+  { key: 'taskCompletionRate', label: 'Task completion', format: 'pct'      },
+]
 
-const COLOR_VARIANTS = {
-  teal:   { ring: 'ring-teal-200',    bg: 'bg-teal-50',    icon: 'text-teal-600',    accent: 'bg-teal-500'   },
-  blue:   { ring: 'ring-blue-200',    bg: 'bg-blue-50',    icon: 'text-blue-600',    accent: 'bg-blue-500'   },
-  emerald:{ ring: 'ring-emerald-200', bg: 'bg-emerald-50', icon: 'text-emerald-600', accent: 'bg-emerald-500'},
-  amber:  { ring: 'ring-amber-200',   bg: 'bg-amber-50',   icon: 'text-amber-600',   accent: 'bg-amber-500'  },
-  purple: { ring: 'ring-purple-200',  bg: 'bg-purple-50',  icon: 'text-purple-600',  accent: 'bg-purple-500' },
-  indigo: { ring: 'ring-indigo-200',  bg: 'bg-indigo-50',  icon: 'text-indigo-600',  accent: 'bg-indigo-500' },
-}
+const GRID = 'grid grid-cols-2 sm:grid-cols-4 2xl:grid-cols-8 gap-2'
 
 function formatVal(val, format) {
   if (format === 'currency') return fmtCurrency(val)
@@ -36,51 +61,30 @@ function formatVal(val, format) {
 export function AnalyticsKpiGrid({ data, isLoading }) {
   if (isLoading || !data) {
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <KpiSkeleton key={i} />
+      <div className={GRID}>
+        {Array.from({ length: FIGURES.length }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-gray-200 bg-white px-3 py-1.5">
+            <Skeleton className="h-2.5 w-20 mb-1.5" />
+            <Skeleton className="h-4 w-14" />
+          </div>
         ))}
       </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-      {Object.entries(KPI_META).map(([key, meta]) => {
-        const kpi = data[key]
-        if (!kpi) return null
-        const cv = COLOR_VARIANTS[meta.color] || COLOR_VARIANTS.teal
-        const Icon = meta.icon
-        const displayVal = formatVal(kpi.value, meta.format)
-        const trendAbs = Math.abs(kpi.trend)
-        const barWidth = Math.min(100, trendAbs * 4 + 40)
-
+    <div className={GRID}>
+      {FIGURES.map((f) => {
+        const entry = data[f.key]
+        if (!entry) return null
         return (
-          <div
-            key={key}
-            className="card p-5 hover:shadow-card-md transition-all duration-200 group cursor-default"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className={`w-10 h-10 rounded-xl ${cv.bg} ring-1 ${cv.ring} flex items-center justify-center flex-shrink-0 transition-transform duration-200 group-hover:scale-110`}>
-                <Icon size={18} className={cv.icon} />
-              </div>
-              <TrendBadge value={kpi.trend} />
-            </div>
-
-            <div className="mb-1">
-              <span className="font-display font-bold text-2xl text-gray-900 tracking-tight">
-                {displayVal}
-              </span>
-            </div>
-            <p className="text-sm text-gray-500 font-medium">{meta.label}</p>
-            <p className="text-xs text-gray-400 mt-0.5">vs previous period</p>
-
-            <div className="mt-4 h-0.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full ${cv.accent} rounded-full transition-all duration-700`}
-                style={{ width: `${barWidth}%` }}
-              />
-            </div>
+          <div key={f.key} className="rounded-xl border border-gray-200 bg-white px-3 py-1.5">
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 leading-none truncate">
+              {f.label}
+            </p>
+            <p className="font-display font-semibold text-gray-900 text-base leading-snug tabular-nums">
+              {formatVal(entry.value, f.format)}
+            </p>
           </div>
         )
       })}
@@ -88,17 +92,4 @@ export function AnalyticsKpiGrid({ data, isLoading }) {
   )
 }
 
-function KpiSkeleton() {
-  return (
-    <div className="card p-5">
-      <div className="flex items-start justify-between mb-4">
-        <Skeleton className="w-10 h-10 rounded-xl" />
-        <Skeleton className="w-14 h-5 rounded-full" />
-      </div>
-      <Skeleton className="h-7 w-24 mb-1.5" />
-      <Skeleton className="h-3.5 w-28 mb-0.5" />
-      <Skeleton className="h-3 w-20 mb-4" />
-      <Skeleton className="h-0.5 w-full" />
-    </div>
-  )
-}
+export default AnalyticsKpiGrid
