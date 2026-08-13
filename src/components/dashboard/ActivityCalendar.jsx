@@ -69,6 +69,25 @@
 // │ Type sizes, the six-row grid and every behaviour are unchanged. This is │
 // │ spacing and weight only — no data, no handler and no state was touched. │
 // │                                                                          │
+// │ step053 stopped tuning padding and changed the shape instead. THE MONTH │
+// │ GRID NO LONGER RENDERS ITEMS. A cell is a day number and up to three    │
+// │ dots, ~40px tall, and the six rows come to ~250px — the whole month     │
+// │ inside a card the height of a KPI row rather than the height of a page. │
+// │                                                                          │
+// │ This is a division of labour, not a loss of information. The grid        │
+// │ answers WHICH DAYS have something and what state it is in; the rail      │
+// │ beside it answers WHAT IS ON, in full, with titles and times. Both read  │
+// │ the same `byDate`, so they cannot disagree. Three padding passes         │
+// │ (step049 → 051 → 052) all failed for the same reason: a cell that must   │
+// │ hold a legible title has a floor of about 70px, and 42 of those is       │
+// │ always going to be most of a screen. Dots have no such floor.            │
+// │                                                                          │
+// │ CREATE MOVED OUT OF THE CELL with the items. There is no room for a      │
+// │ hover + at 40px. Clicking any date — including an empty one — selects    │
+// │ it, and the rail switches to that day and offers its own +. One create   │
+// │ path instead of two, and the empty-Thursday case still works.            │
+// │                                                                          │
+// │ Superseded by the above, kept because it explains the earlier numbers:   │
 // │ step052 took the same pass again, harder, after looking at it running:   │
 // │ cells hold TWO items and the day blocks in the rail lost their inner     │
 // │ padding. Two is the honest cap for a month grid at this size — the third │
@@ -145,7 +164,9 @@ function buildGrid(year, monthIndex) {
   })
 }
 
-function ItemChip({ item, onClick, compact = false }) {
+// step053: only the AgendaRail renders these now — the grid is dots. The
+// `compact` variant that existed for grid cells went with them.
+function ItemChip({ item, onClick }) {
   const style = STATUS_STYLE[item.status] ?? STATUS_STYLE.pending
   const done  = item.status === 'completed' || item.status === 'cancelled'
 
@@ -154,20 +175,17 @@ function ItemChip({ item, onClick, compact = false }) {
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick(item) }}
       title={`${item.type} \u00b7 ${item.title}${item.time ? ` \u00b7 ${fmtTime(item.time)}` : ''}`}
-      className={`w-full text-left rounded flex items-center gap-1.5 min-w-0
-                  hover:bg-gray-100 transition
-                  ${compact ? 'px-1 py-[2px]' : 'px-1.5 py-[3px]'}`}
+      className="w-full text-left rounded flex items-center gap-1.5 min-w-0
+                 px-1.5 py-[3px] hover:bg-gray-100 transition"
     >
-      <span className={`rounded-full shrink-0 ${style.dot}
-                        ${done ? 'opacity-40' : ''}
-                        ${compact ? 'w-1.5 h-1.5' : 'w-2 h-2'}`} />
+      <span className={`w-2 h-2 rounded-full shrink-0 ${style.dot}
+                        ${done ? 'opacity-40' : ''}`} />
       {item.time && !item.allDay && (
-        <span className={`tabular-nums shrink-0 text-gray-400
-                          ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
+        <span className="text-[11px] tabular-nums shrink-0 text-gray-400">
           {fmtTime(item.time)}
         </span>
       )}
-      <span className={`truncate ${compact ? 'text-[11px]' : 'text-xs'}
+      <span className={`truncate text-xs
         ${done ? 'line-through text-gray-400' : 'text-gray-700'}`}>
         {item.title}
       </span>
@@ -258,11 +276,13 @@ function AgendaRail({
 
       {/* Capped so a busy month scrolls the rail instead of stretching the page
           taller than the grid beside it. step051: the cap now tracks the grid's
-          new height, MINUS the rail's own header and footer, so on a busy month
-          the two columns end on the same line instead of the rail running past
-          the grid. step052: six rows of 56 plus the weekday strip is ~360px,
-          and the rail's header and create footer take ~62 of that. */}
-      <div className="divide-y divide-gray-100 max-h-[298px] overflow-y-auto">
+          new height. step053 INVERTS which column sets the height: the dot grid
+          is ~262px, and matching the rail to it would leave the surface that
+          actually carries titles and times showing three days. The rail is the
+          taller column now and the grid sits at the top of it (`self-start`).
+          The cap is here so a 25-day month scrolls the rail rather than
+          stretching the page. */}
+      <div className="divide-y divide-gray-100 max-h-[340px] overflow-y-auto">
       {shownDates.length === 0 && (
         <p className="px-3 py-5 text-xs text-gray-400 text-center">
           {selectedDate ? 'Nothing scheduled this day.' : 'Nothing scheduled this month.'}
@@ -574,80 +594,49 @@ export function ActivityCalendar({
         <div className="grid grid-cols-7">
           {grid.map((cell) => {
             const items    = byDate[cell.date] ?? []
-            const allDay   = items.filter((i) => i.allDay)
-            const timed    = items.filter((i) => !i.allDay)
             const isToday  = cell.date === today
             const isPicked = cell.date === selectedDate
-            // step049 sized the cell for four chips, step051 for three,
-            // step052 for two. Every chip past the second costs ~18px on all 42
-            // cells, and the rail beside the grid already reads a full day
-            // properly. The cap still also exists for evenness — one cell
-            // holding more than the rest makes that whole row taller and the
-            // grid ragged.
-            const shown    = [...allDay, ...timed].slice(0, 2)
-            const overflow = items.length - shown.length
+
+            // Three dots maximum. A fourth adds no information a count could
+            // not carry better, and four 4px dots plus their gaps overrun the
+            // cell. Order is the day's own order, so an overdue item shows its
+            // colour in the position it actually occupies.
+            const dots = items.slice(0, 3)
 
             return (
               <button
                 type="button"
                 key={cell.date}
                 onClick={() => setSelectedDate(isPicked ? null : cell.date)}
-                className={`group relative min-h-[56px] border-b border-r border-gray-100
-                            px-1.5 py-1 text-left align-top transition
+                title={items.length
+                  ? `${items.length} item${items.length === 1 ? '' : 's'}`
+                  : undefined}
+                className={`relative h-10 flex flex-col items-center justify-center gap-1
+                            border-b border-r border-gray-100 transition
                             ${cell.inMonth ? 'bg-white' : 'bg-gray-50/50'}
-                            ${isPicked ? 'ring-2 ring-inset ring-teal-400' : 'hover:bg-teal-50/40'}`}
+                            ${isPicked ? 'ring-1 ring-inset ring-teal-500 bg-teal-50/40'
+                                       : 'hover:bg-gray-50'}`}
               >
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className={`text-[11px] tabular-nums leading-none
-                    ${isToday
-                      ? 'w-[18px] h-[18px] rounded-full bg-teal-600 text-white flex items-center justify-center font-semibold'
-                      : cell.inMonth ? 'text-gray-600 font-medium' : 'text-gray-300'}`}>
-                    {cell.dayNumber}
-                  </span>
+                <span className={`text-[11px] tabular-nums leading-none
+                  ${isToday
+                    ? 'w-[18px] h-[18px] rounded-full bg-teal-600 text-white flex items-center justify-center font-semibold'
+                    : cell.inMonth ? 'text-gray-700' : 'text-gray-300'}`}>
+                  {cell.dayNumber}
+                </span>
 
-                  {/* Appears on hover, the way Google and Outlook do it — always
-                      visible would put 42 plus signs on screen and turn a
-                      calendar into a toolbar. */}
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); setCreateFor(cell.date) }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault(); e.stopPropagation(); setCreateFor(cell.date)
-                      }
-                    }}
-                    className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition
-                               p-0.5 rounded text-gray-400 hover:bg-gray-100 hover:text-teal-700
-                               cursor-pointer"
-                    aria-label={`Add on ${cell.date}`}
-                  >
-                    <Plus className="w-3 h-3" />
-                  </span>
-                </div>
-
-                {/* Two entities can live on a date, so the choice is explicit.
-                    Guessing "meeting" would be wrong for every deadline. */}
-                {createFor === cell.date && (
-                  <CreateMenu
-                    date={cell.date}
-                    onMeeting={createMeetingOn}
-                    onTask={createTaskOn}
-                    onCancel={() => setCreateFor(null)}
-                    className="top-6 right-1"
-                  />
-                )}
-
-                <div className="space-y-px">
-                  {shown.map((item) => (
-                    <ItemChip key={item.id} item={item} onClick={openItem} compact />
-                  ))}
-                  {overflow > 0 && (
-                    <span className="block text-[10px] text-gray-400 pl-1.5">
-                      +{overflow} more
-                    </span>
-                  )}
-                </div>
+                {/* Fixed-height strip whether or not there are dots, so the
+                    day numbers sit on one line across the whole grid instead
+                    of jumping up on empty days. */}
+                <span className="flex items-center justify-center gap-[3px] h-1">
+                  {dots.map((item) => {
+                    const style = STATUS_STYLE[item.status] ?? STATUS_STYLE.pending
+                    const done  = item.status === 'completed' || item.status === 'cancelled'
+                    return (
+                      <span key={item.id}
+                        className={`w-1 h-1 rounded-full ${style.dot} ${done ? 'opacity-40' : ''}`} />
+                    )
+                  })}
+                </span>
               </button>
             )
           })}
