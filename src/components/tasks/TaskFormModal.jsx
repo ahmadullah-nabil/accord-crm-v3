@@ -1,12 +1,26 @@
+// ─── TaskFormModal ────────────────────────────────────────────────────────────
+//
+// step059. Chrome and fields now come from `ui/Modal.jsx` and `ui/FormKit.jsx`.
+// The prefill path (MeetingDetailPanel's "Create follow-up task"), the
+// relatedType reset, the mutations and the payload shape are UNCHANGED.
+//
+// The portal and the body scroll lock moved INTO `Modal` — this file discovered
+// both problems and its comments explaining them now live in that file, where
+// every dialog gets the fix instead of the two that remembered it.
+//
+// `FormError` is new here: the old footer disabled its button while pending but
+// had nowhere to render `createMutation.error`, so a failed insert looked like
+// a click that never registered.
+
 import React, { useState, useEffect } from 'react'
-import { createPortal } from 'react-dom'
-import { X, FileText, Calendar, User, Link2, Tag } from 'lucide-react'
-import { useTasksStore }                             from '../../stores/tasksStore.js'
-import { useTask, useCreateTask, useUpdateTask }     from '../../hooks/useTasks.js'
+import { useTasksStore }                         from '../../stores/tasksStore.js'
+import { useTask, useCreateTask, useUpdateTask } from '../../hooks/useTasks.js'
 import {
   TASK_STATUSES, TASK_PRIORITIES, TASK_TYPES, RELATED_TYPES,
 } from '../../lib/tasksData.js'
 import { useAssignableMembers } from '../../hooks/useTeam.js'
+import { Modal, ModalBody }     from '../ui/Modal.jsx'
+import { FormSection, FormRow, FormField, FormError } from '../ui/FormKit.jsx'
 
 const EMPTY = {
   title:        '',
@@ -36,7 +50,7 @@ export function TaskFormModal() {
   const isOpen = addModalOpen || editModalOpen
   const isEdit = editModalOpen
 
-  const { data: existingTask } = useTask(isEdit ? selectedTaskId : null)
+  const { data: existingTask }   = useTask(isEdit ? selectedTaskId : null)
   const { names: assigneeNames } = useAssignableMembers()
 
   const createMutation = useCreateTask()
@@ -58,6 +72,8 @@ export function TaskFormModal() {
         setForm(prefillData ? { ...EMPTY, ...prefillData } : EMPTY)
       }
       setErrors({})
+      createMutation.reset()
+      updateMutation.reset()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, isEdit, existingTask?.id])
@@ -66,9 +82,9 @@ export function TaskFormModal() {
 
   const validate = () => {
     const e = {}
-    if (!form.title.trim())  e.title    = 'Title is required'
-    if (!form.assignee)      e.assignee = 'Assignee is required'
-    if (!form.dueDate)       e.dueDate  = 'Due date is required'
+    if (!form.title.trim()) e.title    = 'Title is required'
+    if (!form.assignee)     e.assignee = 'Assignee is required'
+    if (!form.dueDate)      e.dueDate  = 'Due date is required'
     return e
   }
 
@@ -92,219 +108,133 @@ export function TaskFormModal() {
     }
   }
 
-  const isPending = createMutation.isPending || updateMutation.isPending
+  const isPending     = createMutation.isPending || updateMutation.isPending
+  const mutationError = createMutation.error?.message || updateMutation.error?.message
 
   const setField = (field) => (e) => {
     setForm((f) => ({ ...f, [field]: e.target.value }))
     setErrors((err) => { const next = { ...err }; delete next[field]; return next })
   }
 
-  // Lock the page behind the modal. Without this the calendar scrolls under an
-  // open dialog on every wheel gesture, which reads as the modal drifting.
-  useEffect(() => {
-    if (!isOpen) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
-  }, [isOpen])
-
-  if (!isOpen) return null
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4
-                    overflow-y-auto">
-      {/* Backdrop */}
-      {/* step050: this scrim was on Tailwind's fixed neutral ramp, which is not
-          mapped to the CSS custom properties. NOT rewritten to gray-900 — the
-          neutral ramp is INVERTED in dark mode, so gray-900 is near-white there
-          and the scrim would light the page up instead of dimming it. `black`
-          is deliberately not remapped by tailwind.config.js, which is exactly
-          what an overlay wants. The values match the Lead/Contact/Opportunity
-          modals rather than inventing a third scrim. */}
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={close} />
-
-      {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-card-lg w-full max-w-[560px]
-        max-h-[90vh] flex flex-col animate-fade-in">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <h2 className="font-display font-bold text-gray-900 text-lg">
-            {isEdit ? 'Edit Task' : 'Add New Task'}
-          </h2>
-          <button
-            onClick={close}
-            className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-
-            {/* Title */}
-            <Field label="Task Title" error={errors.title} required>
-              <input
-                className="input-base"
-                placeholder="e.g. Send proposal to GreenTech BD"
-                value={form.title}
-                onChange={setField('title')}
-              />
-            </Field>
-
-            {/* Description */}
-            <Field label="Description" icon={FileText}>
-              <textarea
-                className="input-base resize-none"
-                rows={3}
-                placeholder="Additional context or instructions…"
-                value={form.description}
-                onChange={setField('description')}
-              />
-            </Field>
-
-            {/* Type + Status + Priority */}
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Type">
-                <select className="input-base" value={form.type} onChange={setField('type')}>
-                  {TASK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </Field>
-              <Field label="Status">
-                <select className="input-base" value={form.status} onChange={setField('status')}>
-                  {TASK_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </Field>
-              <Field label="Priority">
-                <select className="input-base" value={form.priority} onChange={setField('priority')}>
-                  {TASK_PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </Field>
-            </div>
-
-            {/* Due date + Assignee */}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Due Date" error={errors.dueDate} icon={Calendar} required>
-                <input
-                  type="date"
-                  className="input-base"
-                  value={form.dueDate}
-                  onChange={setField('dueDate')}
-                />
-              </Field>
-              <Field label="Assignee" error={errors.assignee} icon={User} required>
-                <select className="input-base" value={form.assignee} onChange={setField('assignee')}>
-                  <option value="">Select assignee…</option>
-                  {assigneeNames.map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
-              </Field>
-            </div>
-
-            {/* Related entity */}
-            <div className="space-y-3">
-              <Field label="Related To" icon={Link2}>
-                <select
-                  className="input-base"
-                  value={form.relatedType}
-                  onChange={(e) => {
-                    setForm((f) => ({
-                      ...f,
-                      relatedType:  e.target.value,
-                      relatedId:    '',
-                      relatedLabel: '',
-                    }))
-                  }}
-                >
-                  {RELATED_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </Field>
-
-              {form.relatedType !== 'None' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label={`${form.relatedType} ID`}>
-                    <input
-                      className="input-base"
-                      placeholder={form.relatedType === 'Lead' ? 'L-001' : 'C-001'}
-                      value={form.relatedId}
-                      onChange={setField('relatedId')}
-                    />
-                  </Field>
-                  <Field label="Display Label">
-                    <input
-                      className="input-base"
-                      placeholder="Name — Company"
-                      value={form.relatedLabel}
-                      onChange={setField('relatedLabel')}
-                    />
-                  </Field>
-                </div>
-              )}
-            </div>
-
-            {/* Tags */}
-            <Field label="Tags (comma-separated)" icon={Tag}>
-              <input
-                className="input-base"
-                placeholder="Proposal, Follow-up, Enterprise"
-                value={form.tags}
-                onChange={setField('tags')}
-              />
-            </Field>
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100
-            bg-gray-50/50 rounded-b-2xl flex-shrink-0">
-            <button type="button" onClick={close} className="btn-secondary" disabled={isPending}>
-              Cancel
-            </button>
-            <button type="submit" className="btn-primary" disabled={isPending}>
-              {isPending
-                ? (isEdit ? 'Saving…' : 'Adding…')
-                : (isEdit ? 'Save Changes' : 'Add Task')
-              }
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>,
-    // Rendered into <body>, not into the page tree. A modal nested inside
-    // the scrollable <main> is at the mercy of every ancestor: one transform,
-    // filter or contain anywhere above it turns `position: fixed` into
-    // `absolute` and the backdrop stops covering the viewport. A portal makes
-    // that class of bug impossible rather than fixing one instance of it.
-    document.body,
-  )
-}
-
-// ── Field wrapper ─────────────────────────────────────────────────────────────
-function Field({ label, error, icon: Icon, required, children }) {
-  const child = React.Children.only(children)
-  const isTextarea = child.type === 'textarea'
   return (
-    <div>
-      <label className="label-base">
-        {label}
-        {required && <span className="text-red-400 ml-0.5">*</span>}
-      </label>
-      <div className="relative">
-        {Icon && !isTextarea && (
-          <Icon
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10"
-          />
-        )}
-        {React.cloneElement(child, {
-          className: [
-            child.props.className || 'input-base',
-            Icon && !isTextarea ? 'pl-9' : '',
-            error ? 'border-red-300 focus:border-red-400 focus:ring-red-400/20' : '',
-          ].filter(Boolean).join(' '),
-        })}
-      </div>
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-    </div>
+    <Modal
+      open={isOpen}
+      onClose={close}
+      title={isEdit ? 'Edit task' : 'New task'}
+      size="md"
+      footer={
+        <>
+          <button type="button" onClick={close} className="btn-secondary" disabled={isPending}>
+            Cancel
+          </button>
+          <button type="submit" form="task-form" className="btn-primary" disabled={isPending}>
+            {isPending
+              ? (isEdit ? 'Saving…' : 'Adding…')
+              : (isEdit ? 'Save changes' : 'Create task')}
+          </button>
+        </>
+      }
+    >
+      <form id="task-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
+        <ModalBody>
+          <FormError>{mutationError}</FormError>
+
+          <FormSection label="Task" first>
+            <FormField label="Title" error={errors.title} required>
+              <input className="input-base" placeholder="e.g. Send proposal to GreenTech BD"
+                     value={form.title} onChange={setField('title')} />
+            </FormField>
+
+            <FormField label="Description">
+              <textarea className="input-base resize-none" rows={3}
+                        placeholder="Additional context or instructions…"
+                        value={form.description} onChange={setField('description')} />
+            </FormField>
+          </FormSection>
+
+          <FormSection label="Scheduling">
+            <FormRow cols={3}>
+              <FormField label="Type">
+                <select className="input-base" value={form.type} onChange={setField('type')}>
+                  {TASK_TYPES.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Status">
+                <select className="input-base" value={form.status} onChange={setField('status')}>
+                  {TASK_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Priority">
+                <select className="input-base" value={form.priority} onChange={setField('priority')}>
+                  {TASK_PRIORITIES.map((p) => <option key={p}>{p}</option>)}
+                </select>
+              </FormField>
+            </FormRow>
+
+            <FormRow>
+              <FormField label="Due date" error={errors.dueDate} required>
+                <input type="date" className="input-base"
+                       value={form.dueDate} onChange={setField('dueDate')} />
+              </FormField>
+              <FormField label="Assignee" error={errors.assignee} required>
+                <select className="input-base" value={form.assignee} onChange={setField('assignee')}>
+                  <option value="">Select…</option>
+                  {assigneeNames.map((a) => <option key={a}>{a}</option>)}
+                </select>
+              </FormField>
+            </FormRow>
+          </FormSection>
+
+          <FormSection label="Link">
+            <FormField label="Related to">
+              <select
+                className="input-base"
+                value={form.relatedType}
+                onChange={(e) => {
+                  setForm((f) => ({
+                    ...f,
+                    relatedType:  e.target.value,
+                    relatedId:    '',
+                    relatedLabel: '',
+                  }))
+                }}
+              >
+                {RELATED_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </FormField>
+
+            {form.relatedType !== 'None' && (
+              <FormRow>
+                <FormField label={`${form.relatedType} ID`}>
+                  <input
+                    className="input-base"
+                    placeholder={form.relatedType === 'Lead' ? 'L-001' : 'C-001'}
+                    value={form.relatedId}
+                    onChange={setField('relatedId')}
+                  />
+                </FormField>
+                <FormField label="Display label">
+                  <input
+                    className="input-base"
+                    placeholder="Name — Company"
+                    value={form.relatedLabel}
+                    onChange={setField('relatedLabel')}
+                  />
+                </FormField>
+              </FormRow>
+            )}
+          </FormSection>
+
+          <FormSection label="Details">
+            <FormField label="Tags" hint="Comma-separated">
+              <input className="input-base" placeholder="Proposal, Follow-up, Enterprise"
+                     value={form.tags} onChange={setField('tags')} />
+            </FormField>
+          </FormSection>
+        </ModalBody>
+      </form>
+    </Modal>
   )
 }
+
+export default TaskFormModal

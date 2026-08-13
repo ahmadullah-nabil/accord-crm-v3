@@ -1,8 +1,34 @@
+// ─── OppFormModal ─────────────────────────────────────────────────────────────
+//
+// step059. Chrome and fields now come from `ui/Modal.jsx` and `ui/FormKit.jsx`.
+// The stage → probability auto-set, the prefill path, the mutations and the
+// payload shape are UNCHANGED.
+//
+// TWO FIXES BEYOND STYLING, both visible in the old file above:
+//
+//   1. The footer's submit was a plain <button onClick={handleSubmit}> sitting
+//      OUTSIDE the <form>, so pressing Enter in any field did nothing. It is a
+//      real submit button bound to the form by id now, and Enter works.
+//
+//   2. There was no error surface at all. `createMutation.error` had nowhere
+//      to render, so a failed insert left the dialog open with a button that
+//      looked like it had not been pressed — the step038 wound. `FormError`
+//      renders it.
+//
+// The `$` glyph inside the Deal Value input is gone with the other field
+// icons: the field is labelled in taka everywhere else in the app, and a
+// dollar sign on a BDT figure was actively wrong.
+
 import React, { useState, useEffect } from 'react'
-import { X, DollarSign, TrendingUp, Building2, Calendar, User, Tag } from 'lucide-react'
-import { useOpportunitiesStore, OPPORTUNITY_STAGES, PROBABILITY_BY_STAGE } from '../../stores/opportunitiesStore.js'
-import { useCreateOpportunity, useUpdateOpportunity, useOpportunity } from '../../hooks/useOpportunities.js'
+import {
+  useOpportunitiesStore, OPPORTUNITY_STAGES, PROBABILITY_BY_STAGE,
+} from '../../stores/opportunitiesStore.js'
+import {
+  useCreateOpportunity, useUpdateOpportunity, useOpportunity,
+} from '../../hooks/useOpportunities.js'
 import { useAssignableMembers } from '../../hooks/useTeam.js'
+import { Modal, ModalBody }     from '../ui/Modal.jsx'
+import { FormSection, FormRow, FormField, FormError } from '../ui/FormKit.jsx'
 
 const EMPTY = {
   title: '', company: '', email: '', phone: '',
@@ -40,6 +66,8 @@ export function OppFormModal() {
         setForm(prefillData ? { ...EMPTY, ...prefillData } : EMPTY)
       }
       setErrors({})
+      createMutation.reset()
+      updateMutation.reset()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, isEdit, existing?.id])
@@ -56,13 +84,14 @@ export function OppFormModal() {
       }
       return next
     })
+    setErrors((err) => { const next = { ...err }; delete next[field]; return next })
   }
 
   const validate = () => {
     const e = {}
-    if (!form.title.trim())    e.title    = 'Title is required'
-    if (!form.company.trim())  e.company  = 'Company is required'
-    if (!form.assignee)        e.assignee = 'Assignee is required'
+    if (!form.title.trim())   e.title    = 'Title is required'
+    if (!form.company.trim()) e.company  = 'Company is required'
+    if (!form.assignee)       e.assignee = 'Assignee is required'
     if (form.value !== '' && isNaN(Number(form.value))) e.value = 'Must be a number'
     return e
   }
@@ -79,119 +108,106 @@ export function OppFormModal() {
       tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     }
 
-    const mutation = isEdit
-      ? updateMutation.mutate({ id: existing.id, data: payload }, { onSuccess: close })
-      : createMutation.mutate(payload, { onSuccess: close })
+    if (isEdit) {
+      updateMutation.mutate({ id: existing.id, data: payload }, { onSuccess: close })
+    } else {
+      createMutation.mutate(payload, { onSuccess: close })
+    }
   }
 
-  const isPending = createMutation.isPending || updateMutation.isPending
-
-  if (!isOpen) return null
+  const isPending     = createMutation.isPending || updateMutation.isPending
+  const mutationError = createMutation.error?.message || updateMutation.error?.message
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={close} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <h2 className="font-display font-bold text-gray-900">
-            {isEdit ? 'Edit Deal' : 'New Deal'}
-          </h2>
-          <button onClick={close} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 transition-colors">
-            <X size={16} />
+    <Modal
+      open={isOpen}
+      onClose={close}
+      title={isEdit ? 'Edit deal' : 'New deal'}
+      size="md"
+      footer={
+        <>
+          <button type="button" onClick={close} className="btn-secondary" disabled={isPending}>
+            Cancel
           </button>
-        </div>
-
-        {/* Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
-          <Field label="Title" error={errors.title} required>
-            <input className="input-base" placeholder="Deal name…" value={form.title} onChange={set('title')} />
-          </Field>
-
-          <Field label="Company" error={errors.company} required>
-            <input className="input-base" placeholder="Company name…" value={form.company} onChange={set('company')} />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Email">
-              <input className="input-base" type="email" placeholder="contact@company.com" value={form.email} onChange={set('email')} />
-            </Field>
-            <Field label="Phone">
-              <input className="input-base" type="tel" placeholder="+880…" value={form.phone} onChange={set('phone')} />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Stage" required>
-              <select className="input-base" value={form.stage} onChange={set('stage')}>
-                {OPPORTUNITY_STAGES.map((s) => <option key={s}>{s}</option>)}
-              </select>
-            </Field>
-            <Field label="Probability">
-              <div className="flex items-center gap-2">
-                <input
-                  className="input-base flex-1"
-                  type="number" min="0" max="100"
-                  value={form.probability}
-                  onChange={set('probability')}
-                />
-                <span className="text-sm text-gray-500 font-medium">%</span>
-              </div>
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Deal Value" error={errors.value}>
-              <div className="relative">
-                <DollarSign size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input className="input-base pl-8" type="text" placeholder="0" value={form.value} onChange={set('value')} />
-              </div>
-            </Field>
-            <Field label="Expected Close">
-              <input className="input-base" type="date" value={form.expectedCloseDate} onChange={set('expectedCloseDate')} />
-            </Field>
-          </div>
-
-          <Field label="Assignee" error={errors.assignee} required>
-            <select className="input-base" value={form.assignee} onChange={set('assignee')}>
-              <option value="">Select assignee…</option>
-              {assigneeNames.map((n) => <option key={n}>{n}</option>)}
-            </select>
-          </Field>
-
-          <Field label="Notes">
-            <textarea className="input-base resize-none h-20" placeholder="Deal notes…" value={form.notes} onChange={set('notes')} />
-          </Field>
-
-          <Field label="Tags">
-            <input className="input-base" placeholder="tag1, tag2…" value={form.tags} onChange={set('tags')} />
-          </Field>
-        </form>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
-          <button onClick={close} className="btn-secondary">Cancel</button>
-          <button
-            onClick={handleSubmit}
-            disabled={isPending}
-            className="btn-primary disabled:opacity-60"
-          >
-            {isPending ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Deal'}
+          <button type="submit" form="opp-form" className="btn-primary" disabled={isPending}>
+            {isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Create deal'}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <form id="opp-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
+        <ModalBody>
+          <FormError>{mutationError}</FormError>
+
+          <FormSection label="Deal" first>
+            <FormField label="Title" error={errors.title} required>
+              <input className="input-base" placeholder="Deal name…"
+                     value={form.title} onChange={set('title')} />
+            </FormField>
+
+            <FormField label="Company" error={errors.company} required>
+              <input className="input-base" placeholder="Company name…"
+                     value={form.company} onChange={set('company')} />
+            </FormField>
+
+            <FormRow>
+              <FormField label="Deal value (BDT)" error={errors.value}>
+                <input type="text" className="input-base tabular-nums" placeholder="0"
+                       value={form.value} onChange={set('value')} />
+              </FormField>
+              <FormField label="Expected close">
+                <input type="date" className="input-base"
+                       value={form.expectedCloseDate} onChange={set('expectedCloseDate')} />
+              </FormField>
+            </FormRow>
+
+            <FormRow cols={3}>
+              <FormField label="Stage" required>
+                <select className="input-base" value={form.stage} onChange={set('stage')}>
+                  {OPPORTUNITY_STAGES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              </FormField>
+              <FormField label="Probability" hint="Follows the stage unless you change it">
+                <input type="number" min="0" max="100" className="input-base tabular-nums"
+                       value={form.probability} onChange={set('probability')} />
+              </FormField>
+              <FormField label="Assignee" error={errors.assignee} required>
+                <select className="input-base" value={form.assignee} onChange={set('assignee')}>
+                  <option value="">Select…</option>
+                  {assigneeNames.map((n) => <option key={n}>{n}</option>)}
+                </select>
+              </FormField>
+            </FormRow>
+          </FormSection>
+
+          <FormSection label="Contact">
+            <FormRow>
+              <FormField label="Email">
+                <input type="email" className="input-base" placeholder="contact@company.com"
+                       value={form.email} onChange={set('email')} />
+              </FormField>
+              <FormField label="Phone">
+                <input type="tel" className="input-base" placeholder="+880…"
+                       value={form.phone} onChange={set('phone')} />
+              </FormField>
+            </FormRow>
+          </FormSection>
+
+          <FormSection label="Details">
+            <FormField label="Tags" hint="Comma-separated">
+              <input className="input-base" placeholder="tag1, tag2…"
+                     value={form.tags} onChange={set('tags')} />
+            </FormField>
+
+            <FormField label="Notes">
+              <textarea className="input-base resize-none" rows={3} placeholder="Deal notes…"
+                        value={form.notes} onChange={set('notes')} />
+            </FormField>
+          </FormSection>
+        </ModalBody>
+      </form>
+    </Modal>
   )
 }
 
-function Field({ label, error, required, children }) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-        {label} {required && <span className="text-red-400">*</span>}
-      </label>
-      {children}
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-    </div>
-  )
-}
+export default OppFormModal

@@ -1,7 +1,23 @@
+// ─── LeadFormModal ────────────────────────────────────────────────────────────
+//
+// step059. Chrome, field wrapper and section grouping now come from
+// `ui/Modal.jsx` and `ui/FormKit.jsx`. The store calls, the validation and the
+// payload shape are UNCHANGED — this batch moved markup, not behaviour.
+//
+// Three sections, in the order a person actually knows the answers: who they
+// are, where the deal stands, and everything optional.
+//
+// `addLead` / `updateLead` are Zustand actions and return nothing, so there is
+// no pending or error state to render here — Leads is the last module still on
+// a Zustand array rather than React Query (backlog item 10). When it moves,
+// give this form the `FormError` banner and a disabled submit, the way Contact
+// and Opportunity have them.
+
 import React, { useState, useEffect } from 'react'
-import { X, User, Building2, Mail, Phone, DollarSign, Tag } from 'lucide-react'
 import { useLeadsStore, STAGES, PRIORITIES, SOURCES } from '../../stores/leadsStore.js'
 import { useAssignableMembers } from '../../hooks/useTeam.js'
+import { Modal, ModalBody }     from '../ui/Modal.jsx'
+import { FormSection, FormRow, FormField } from '../ui/FormKit.jsx'
 
 const EMPTY = {
   name: '', company: '', email: '', phone: '',
@@ -21,7 +37,7 @@ export function LeadFormModal() {
   const isEdit = editModalOpen
   const existingLead = isEdit ? getSelectedLead() : null
 
-  const [form, setForm] = useState(EMPTY)
+  const [form, setForm]     = useState(EMPTY)
   const [errors, setErrors] = useState({})
 
   useEffect(() => {
@@ -37,6 +53,7 @@ export function LeadFormModal() {
       }
       setErrors({})
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, isEdit, existingLead?.id])
 
   const close = () => { isEdit ? closeEditModal() : closeAddModal() }
@@ -74,90 +91,91 @@ export function LeadFormModal() {
     setErrors((err) => { const next = { ...err }; delete next[field]; return next })
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={close} />
-
-      {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-card-lg w-full max-w-[560px] max-h-[90vh] flex flex-col animate-fade-in">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="font-display font-bold text-gray-900 text-lg">
-            {isEdit ? 'Edit Lead' : 'Add New Lead'}
-          </h2>
-          <button onClick={close} className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
-            <X size={16} />
+    <Modal
+      open={isOpen}
+      onClose={close}
+      title={isEdit ? 'Edit lead' : 'New lead'}
+      size="md"
+      footer={
+        <>
+          <button type="button" onClick={close} className="btn-secondary">Cancel</button>
+          <button type="submit" form="lead-form" className="btn-primary">
+            {isEdit ? 'Save changes' : 'Create lead'}
           </button>
-        </div>
+        </>
+      }
+    >
+      {/* The submit button lives in the footer, OUTSIDE this <form>, and is
+          bound back to it by `form="lead-form"`. Nesting the footer inside the
+          form instead would put the scrolling boundary in the wrong place —
+          the footer would scroll away with the fields. */}
+      <form id="lead-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
+        <ModalBody>
+          <FormSection label="Contact" first>
+            <FormRow>
+              <FormField label="Full name" error={errors.name} required>
+                <input className="input-base" placeholder="Farhan Hossain"
+                       value={form.name} onChange={set('name')} />
+              </FormField>
+              <FormField label="Company" error={errors.company} required>
+                <input className="input-base" placeholder="GreenTech BD"
+                       value={form.company} onChange={set('company')} />
+              </FormField>
+            </FormRow>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            <FormRow>
+              <FormField label="Email" error={errors.email} required>
+                <input type="email" className="input-base" placeholder="name@company.com"
+                       value={form.email} onChange={set('email')} />
+              </FormField>
+              <FormField label="Phone">
+                <input type="tel" className="input-base" placeholder="+880 17XX-XXXXXX"
+                       value={form.phone} onChange={set('phone')} />
+              </FormField>
+            </FormRow>
+          </FormSection>
 
-            {/* Row: name + company */}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Full Name" error={errors.name} icon={User}>
-                <input className="input-base" placeholder="Farhan Hossain" value={form.name} onChange={set('name')} />
-              </Field>
-              <Field label="Company" error={errors.company} icon={Building2}>
-                <input className="input-base" placeholder="GreenTech BD" value={form.company} onChange={set('company')} />
-              </Field>
-            </div>
-
-            {/* Row: email + phone */}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Email" error={errors.email} icon={Mail}>
-                <input type="email" className="input-base" placeholder="name@company.com" value={form.email} onChange={set('email')} />
-              </Field>
-              <Field label="Phone">
-                <input type="tel" className="input-base" placeholder="+880 17XX-XXXXXX" value={form.phone} onChange={set('phone')} />
-              </Field>
-            </div>
-
-            {/* Row: stage + priority */}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Stage">
+          <FormSection label="Deal">
+            <FormRow cols={3}>
+              <FormField label="Stage">
                 <select className="input-base" value={form.stage} onChange={set('stage')}>
                   {STAGES.map((s) => <option key={s}>{s}</option>)}
                 </select>
-              </Field>
-              <Field label="Priority">
+              </FormField>
+              <FormField label="Priority">
                 <select className="input-base" value={form.priority} onChange={set('priority')}>
                   {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
                 </select>
-              </Field>
-            </div>
-
-            {/* Row: value + source */}
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Deal Value (BDT)" error={errors.value} icon={DollarSign}>
-                <input type="number" className="input-base" placeholder="500000" value={form.value} onChange={set('value')} />
-              </Field>
-              <Field label="Source">
+              </FormField>
+              <FormField label="Source">
                 <select className="input-base" value={form.source} onChange={set('source')}>
                   {SOURCES.map((s) => <option key={s}>{s}</option>)}
                 </select>
-              </Field>
-            </div>
+              </FormField>
+            </FormRow>
 
-            {/* Assignee */}
-            <Field label="Assignee" error={errors.assignee}>
-              <select className="input-base" value={form.assignee} onChange={set('assignee')}>
-                <option value="">Select assignee…</option>
-                {assigneeNames.map((a) => <option key={a}>{a}</option>)}
-              </select>
-            </Field>
+            <FormRow>
+              <FormField label="Deal value (BDT)" error={errors.value} required>
+                <input type="number" className="input-base tabular-nums" placeholder="500000"
+                       value={form.value} onChange={set('value')} />
+              </FormField>
+              <FormField label="Assignee" error={errors.assignee} required>
+                <select className="input-base" value={form.assignee} onChange={set('assignee')}>
+                  <option value="">Select assignee…</option>
+                  {assigneeNames.map((a) => <option key={a}>{a}</option>)}
+                </select>
+              </FormField>
+            </FormRow>
+          </FormSection>
 
-            {/* Tags */}
-            <Field label="Tags (comma-separated)" icon={Tag}>
-              <input className="input-base" placeholder="Enterprise, Q2, Healthcare" value={form.tags} onChange={set('tags')} />
-            </Field>
+          <FormSection label="Details">
+            <FormField label="Tags" hint="Comma-separated">
+              <input className="input-base" placeholder="Enterprise, Q2, Healthcare"
+                     value={form.tags} onChange={set('tags')} />
+            </FormField>
 
-            {/* Notes */}
-            <Field label="Notes">
+            <FormField label="Notes">
               <textarea
                 className="input-base resize-none"
                 rows={3}
@@ -165,35 +183,12 @@ export function LeadFormModal() {
                 value={form.notes}
                 onChange={set('notes')}
               />
-            </Field>
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl">
-            <button type="button" onClick={close} className="btn-secondary">Cancel</button>
-            <button type="submit" className="btn-primary">
-              {isEdit ? 'Save Changes' : 'Add Lead'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+            </FormField>
+          </FormSection>
+        </ModalBody>
+      </form>
+    </Modal>
   )
 }
 
-function Field({ label, error, icon: Icon, children }) {
-  return (
-    <div>
-      <label className="label-base">{label}</label>
-      <div className="relative">
-        {Icon && (
-          <Icon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
-        )}
-        {React.cloneElement(children, {
-          className: `${children.props.className || 'input-base'} ${Icon ? 'pl-9' : ''} ${error ? 'border-red-300 focus:border-red-400 focus:ring-red-400/20' : ''}`,
-        })}
-      </div>
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-    </div>
-  )
-}
+export default LeadFormModal
