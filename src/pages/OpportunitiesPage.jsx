@@ -1,3 +1,19 @@
+// ─── OpportunitiesPage ────────────────────────────────────────────────────────
+//
+// step044. The page heading block is gone, matching Leads and Contacts.
+//
+// It was a 36px teal icon tile, an <h1> reading "Opportunities" and a subtitle
+// reading "Manage your deals pipeline" — on a page reached by clicking
+// "Opportunities" in the sidebar, under a top bar already reading the same
+// word. Three restatements of one word, costing ~64px above the fold.
+//
+// Spacing drops from space-y-4 to space-y-2 to match the other two migrated
+// modules: the chips, the header row and the table are one block, and 16px
+// gutters between them read as three separate cards.
+//
+// Nothing else about this page changed: same hook, same filters, same modals
+// and panels mounted in the same order.
+
 import React from 'react'
 import { TrendingUp, RefreshCw } from 'lucide-react'
 import { useOpportunities }        from '../hooks/useOpportunities.js'
@@ -44,22 +60,8 @@ export function OpportunitiesPage() {
 
   return (
     <>
-      <div className="space-y-4 max-w-[1600px]">
-        {/* Page heading */}
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-teal-50 rounded-xl flex items-center justify-center ring-1 ring-teal-200">
-            <TrendingUp size={18} className="text-teal-600" />
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-gray-900 text-xl leading-tight">Opportunities</h1>
-            <p className="text-xs text-gray-500">Manage your deals pipeline</p>
-          </div>
-        </div>
-
-        {/* Summary bar */}
+      <div className="space-y-2 max-w-[1600px]">
         <OppSummaryBar opportunities={allOpps} />
-
-        {/* Toolbar */}
         <OpportunitiesToolbar total={allOpps.length} filtered={filtered.length} />
 
         {/* View: kanban or table */}

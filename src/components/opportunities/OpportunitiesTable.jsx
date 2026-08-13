@@ -1,186 +1,241 @@
+// ─── OpportunitiesTable ───────────────────────────────────────────────────────
+//
+// step044. Third consumer of the DataTable primitive. 186 lines → this.
+//
+// The header markup, sort chevrons, row hover, the row action menu and its
+// outside-click handler, the skeleton and the empty state are the primitive's
+// job now. What is left is what is genuinely about deals: which columns exist
+// and how each cell renders.
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │ THREE THINGS CHANGED THAT ARE NOT LAYOUT. ALL THREE ARE FLAGGED.        │
+// ├─────────────────────────────────────────────────────────────────────────┤
+// │ 1. THE SCHEDULE-MEETING PREFILL WAS WRITING A LIE.                       │
+// │    It sent `relatedType: 'Lead'` with an OPPORTUNITY id. There is no     │
+// │    lead with that id, so the meeting was filed against a phantom: it     │
+// │    never appeared on any record's Meetings list (useLeadMeetings         │
+// │    matches relatedType 'Lead' AND a lead id, and an opportunity id is    │
+// │    neither), while /meetings displayed it labelled "Lead". Rows that     │
+// │    save successfully and land nowhere findable — the step038 class.      │
+// │                                                                          │
+// │    'Opportunity' is NOT a fix available in this batch: RELATED_TYPES in  │
+// │    lib/meetingsData.js is ['Lead','Contact','None'] and there is no      │
+// │    useOpportunityMeetings hook, so the value would be unselectable in    │
+// │    the form and unreadable everywhere. That is a vocabulary decision,    │
+// │    adjacent to the crm_entity_type landmine, and it is not made here.    │
+// │                                                                          │
+// │    So the prefill now carries the TITLE and no relation at all, letting  │
+// │    the form's own 'None' default stand. The meeting is created,          │
+// │    correctly unattributed, instead of falsely attributed. Nothing that   │
+// │    worked stopped working — the link never worked.                       │
+// │                                                                          │
+// │ 2. ROW ACTIONS ARE NOW PERMISSION-GATED. OppDetailPanel has always       │
+// │    gated Edit and Delete through useOpportunityPermissions; this table   │
+// │    never did, so the row menu offered deletes the panel refused on the   │
+// │    same deal. useBatchOpportunityPermissions already existed for exactly │
+// │    this and had no callers. This applies the module's OWN existing       │
+// │    policy to the surface that skipped it — it does not invent one.       │
+// │    Say the word and it reverts to ungated.                               │
+// │                                                                          │
+// │ 3. A LAST ACTIVITY COLUMN. The store's default sortField is              │
+// │    'lastActivity' and no column rendered it, so the table arrived sorted │
+// │    by an invisible key with no sort indicator anywhere.                  │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// An action the user cannot perform is ABSENT, not disabled — a disabled item
+// still advertises a capability they do not have.
+
 import React from 'react'
-import { ChevronUp, ChevronDown, ChevronsUpDown, MoreHorizontal, Eye, Pencil, Trash2, Calendar } from 'lucide-react'
-import { useOpportunitiesStore, OPPORTUNITY_STAGES, OPP_STAGE_COLORS } from '../../stores/opportunitiesStore.js'
-import { useMeetingsStore }         from '../../stores/meetingsStore.js'
-import { useDeleteOpportunity }     from '../../hooks/useOpportunities.js'
-import { Skeleton }                 from '../ui/Skeleton.jsx'
-import { Avatar }                   from '../ui/Avatar.jsx'
+import {
+  Briefcase, Tag, DollarSign, Percent, TrendingUp, CalendarClock,
+  User, Clock, Eye, Pencil, Trash2, Calendar,
+} from 'lucide-react'
+import {
+  useOpportunitiesStore, OPP_STAGE_COLORS,
+} from '../../stores/opportunitiesStore.js'
+import { useMeetingsStore }             from '../../stores/meetingsStore.js'
+import { useDeleteOpportunity }         from '../../hooks/useOpportunities.js'
+import { useBatchOpportunityPermissions } from '../../hooks/usePermissions.js'
+import { Avatar }    from '../ui/Avatar.jsx'
+import { DataTable } from '../ui/DataTable.jsx'
 
 const fmt = (n) =>
   n >= 1_000_000 ? `৳${(n / 1_000_000).toFixed(1)}M`
   : n >= 1_000   ? `৳${(n / 1_000).toFixed(0)}K`
-  : `৳${n}`
+  : `৳${n ?? 0}`
 
-const COLS = [
-  { key: 'title',             label: 'Title',           sortable: true  },
-  { key: 'stage',             label: 'Stage',           sortable: true  },
-  { key: 'value',             label: 'Value',           sortable: true  },
-  { key: 'probability',       label: 'Prob',            sortable: true  },
-  { key: 'expectedRevenue',   label: 'Exp. Revenue',    sortable: true  },
-  { key: 'expectedCloseDate', label: 'Close Date',      sortable: true  },
-  { key: 'assignee',          label: 'Assignee',        sortable: true  },
-  { key: 'actions',           label: '',                sortable: false },
-]
+export function OpportunitiesTable({ opportunities = [], isLoading }) {
+  const {
+    sortField, sortDir, setSort,
+    openDetail, openEditModal, openAddModal,
+  } = useOpportunitiesStore()
 
-export function OpportunitiesTable({ opportunities, isLoading }) {
-  const { sortField, sortDir, setSort, openDetail, openEditModal } = useOpportunitiesStore()
   const { openAddModalWithPrefill } = useMeetingsStore()
+  const { getPermissions } = useBatchOpportunityPermissions()
   const deleteMutation = useDeleteOpportunity()
 
-  if (isLoading) {
-    return (
-      <div className="card overflow-hidden">
-        <div className="p-4 space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full rounded-xl" />
-          ))}
+  const columns = [
+    {
+      key: 'title',
+      label: 'Deal',
+      icon: Briefcase,
+      sortable: true,
+      width: '280px',
+      render: (o) => (
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-medium text-gray-900 truncate">{o.title}</span>
+          {o.company && <span className="text-gray-400 truncate">· {o.company}</span>}
         </div>
-      </div>
-    )
-  }
+      ),
+    },
+    {
+      key: 'stage',
+      label: 'Stage',
+      icon: Tag,
+      sortable: true,
+      width: '140px',
+      // A badge, not a dropdown. Leads' table has an inline stage select
+      // because it always had one; this table never did, and adding inline
+      // editing is its own batch with its own validation and error surface —
+      // see the step038 lesson. The Kanban is still the way to move a stage.
+      render: (o) => {
+        const sc = OPP_STAGE_COLORS[o.stage] ?? OPP_STAGE_COLORS.New
+        return (
+          <span className={`badge ${sc.light}`}>
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${sc.bg}`} />
+            {o.stage}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'value',
+      label: 'Value',
+      icon: DollarSign,
+      sortable: true,
+      align: 'right',
+      width: '110px',
+      render: (o) => <span className="font-medium text-gray-800 tnum">{fmt(o.value)}</span>,
+    },
+    {
+      key: 'probability',
+      label: 'Prob.',
+      icon: Percent,
+      sortable: true,
+      align: 'right',
+      width: '80px',
+      render: (o) => <span className="text-gray-500 tnum">{o.probability}%</span>,
+    },
+    {
+      key: 'expectedRevenue',
+      label: 'Exp. revenue',
+      icon: TrendingUp,
+      sortable: true,
+      align: 'right',
+      width: '130px',
+      render: (o) => (
+        <span className="font-medium text-emerald-600 tnum">{fmt(o.expectedRevenue)}</span>
+      ),
+    },
+    {
+      key: 'expectedCloseDate',
+      label: 'Close date',
+      icon: CalendarClock,
+      sortable: true,
+      width: '120px',
+      render: (o) => (
+        o.expectedCloseDate
+          ? <span className="text-gray-500">{o.expectedCloseDate}</span>
+          : <span className="text-gray-300">—</span>
+      ),
+    },
+    {
+      key: 'assignee',
+      label: 'Assignee',
+      icon: User,
+      sortable: true,
+      width: '150px',
+      // The old cell did `opp.assignee.split(' ')[0]` behind a truthiness
+      // guard, showing only a first name. Assignee is a NAME with no user id
+      // (see the invariant), and two people called Rahman are indistinguishable
+      // at first-name resolution. Full name, same as every other table.
+      render: (o) => (
+        o.assignee
+          ? (
+            <div className="flex items-center gap-1.5">
+              <Avatar name={o.assignee} size="xs" />
+              <span className="truncate">{o.assignee}</span>
+            </div>
+          )
+          : <span className="text-gray-300">Unassigned</span>
+      ),
+    },
+    {
+      key: 'lastActivity',
+      label: 'Last activity',
+      icon: Clock,
+      sortable: true,
+      width: '130px',
+      render: (o) => <span className="text-gray-500">{o.lastActivity || '—'}</span>,
+    },
+  ]
 
-  if (opportunities.length === 0) {
-    return (
-      <div className="card py-16 text-center">
-        <p className="text-sm font-semibold text-gray-800 mb-1">No deals found</p>
-        <p className="text-xs text-gray-400">Try adjusting your filters or add a new deal.</p>
-      </div>
-    )
-  }
-
-  const SortIcon = ({ col }) => {
-    if (!col.sortable) return null
-    if (sortField !== col.key) return <ChevronsUpDown size={12} className="text-gray-300" />
-    return sortDir === 'asc'
-      ? <ChevronUp size={12} className="text-teal-500" />
-      : <ChevronDown size={12} className="text-teal-500" />
-  }
+  // Open pipeline excludes Won and Lost — a settled deal in the pipeline
+  // number flatters or drags it depending on which way the quarter went.
+  const open     = opportunities.filter((o) => !['Won', 'Lost'].includes(o.stage))
+  const pipeline = open.reduce((s, o) => s + (Number(o.value) || 0), 0)
+  const expected = open.reduce((s, o) => s + (Number(o.expectedRevenue) || 0), 0)
+  const won      = opportunities.filter((o) => o.stage === 'Won').length
 
   return (
-    <div className="card overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-100">
-            {COLS.map((col) => (
-              <th
-                key={col.key}
-                onClick={col.sortable ? () => setSort(col.key) : undefined}
-                className={`text-left text-xs font-semibold text-gray-500 px-4 py-3 whitespace-nowrap
-                  ${col.sortable ? 'cursor-pointer hover:text-gray-800 select-none' : ''}`}
-              >
-                <span className="flex items-center gap-1">
-                  {col.label} <SortIcon col={col} />
-                </span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {opportunities.map((opp) => (
-            <OppRow
-              key={opp.id}
-              opp={opp}
-              onOpen={() => openDetail(opp.id)}
-              onEdit={() => openEditModal(opp.id)}
-              onDelete={() => deleteMutation.mutate(opp.id)}
-              onSchedule={() => openAddModalWithPrefill({
-                relatedType:  'Lead',
-                relatedId:    opp.id,
-                relatedLabel: `${opp.title} — ${opp.company}`,
-                title:        `Meeting — ${opp.company}`,
-                participants: [],
-              })}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      rows={opportunities}
+      isLoading={isLoading}
+      selectable
+      sort={{ field: sortField, dir: sortDir }}
+      onSort={setSort}
+      onRowClick={(o) => openDetail(o.id)}
+      onAddNew={openAddModal}
+      rowActions={(o) => {
+        const perms = getPermissions(o)
+        return [
+          { label: 'Open', icon: Eye, onClick: () => openDetail(o.id) },
+          perms.canEdit && {
+            label: 'Edit', icon: Pencil, onClick: () => openEditModal(o.id),
+          },
+          perms.canEdit && {
+            label: 'Schedule meeting',
+            icon: Calendar,
+            // No relatedType/relatedId — see note 1 at the top of this file.
+            // Omitting them lets MeetingFormModal's 'None' default stand.
+            onClick: () => openAddModalWithPrefill({
+              title: `Meeting — ${o.company || o.title}`,
+            }),
+          },
+          perms.canDelete && {
+            label: 'Delete',
+            icon: Trash2,
+            danger: true,
+            onClick: () => {
+              if (confirm(`Delete deal "${o.title}"?`)) deleteMutation.mutate(o.id)
+            },
+          },
+        ].filter(Boolean)
+      }}
+      aggregates={[
+        { label: 'Deals',        value: opportunities.length },
+        { label: 'Open pipeline', value: fmt(pipeline) },
+        { label: 'Expected',     value: fmt(expected) },
+        { label: 'Won',          value: won },
+      ]}
+      empty={{
+        icon: Briefcase,
+        title: 'No deals found',
+        description: 'Try adjusting your search or filter criteria.',
+      }}
+    />
   )
 }
 
-function OppRow({ opp, onOpen, onEdit, onDelete, onSchedule }) {
-  const [menuOpen, setMenuOpen] = React.useState(false)
-  const sc = OPP_STAGE_COLORS[opp.stage] ?? OPP_STAGE_COLORS.New
-
-  return (
-    <tr
-      onClick={onOpen}
-      className="border-b border-gray-50 hover:bg-gray-50/60 cursor-pointer transition-colors group"
-    >
-      <td className="px-4 py-3">
-        <div>
-          <p className="font-semibold text-gray-900 group-hover:text-teal-700 transition-colors">
-            {opp.title}
-          </p>
-          {opp.company && (
-            <p className="text-xs text-gray-400">{opp.company}</p>
-          )}
-        </div>
-      </td>
-      <td className="px-4 py-3">
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${sc.light}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${sc.bg}`} />
-          {opp.stage}
-        </span>
-      </td>
-      <td className="px-4 py-3 font-mono font-semibold text-gray-800">{fmt(opp.value)}</td>
-      <td className="px-4 py-3 text-xs text-gray-500">{opp.probability}%</td>
-      <td className="px-4 py-3 font-mono text-xs text-emerald-600 font-semibold">{fmt(opp.expectedRevenue)}</td>
-      <td className="px-4 py-3 text-xs text-gray-500">{opp.expectedCloseDate || '—'}</td>
-      <td className="px-4 py-3">
-        {opp.assignee ? (
-          <div className="flex items-center gap-2">
-            <Avatar name={opp.assignee} size="sm" />
-            <span className="text-xs text-gray-600">{opp.assignee.split(' ')[0]}</span>
-          </div>
-        ) : <span className="text-xs text-gray-300">—</span>}
-      </td>
-      <td className="px-4 py-3 relative" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={() => setMenuOpen((v) => !v)}
-          className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-gray-100 transition-all"
-        >
-          <MoreHorizontal size={15} className="text-gray-400" />
-        </button>
-        {menuOpen && (
-          <RowMenu
-            onOpen={() => { onOpen(); setMenuOpen(false) }}
-            onEdit={() => { onEdit(); setMenuOpen(false) }}
-            onSchedule={() => { onSchedule(); setMenuOpen(false) }}
-            onDelete={() => { if (confirm(`Delete "${opp.title}"?`)) { onDelete(); setMenuOpen(false) } }}
-            onClose={() => setMenuOpen(false)}
-          />
-        )}
-      </td>
-    </tr>
-  )
-}
-
-function RowMenu({ onOpen, onEdit, onDelete, onSchedule, onClose }) {
-  React.useEffect(() => {
-    const h = () => onClose()
-    document.addEventListener('click', h, true)
-    return () => document.removeEventListener('click', h, true)
-  }, [onClose])
-
-  return (
-    <div className="absolute right-0 top-8 z-20 bg-white rounded-xl shadow-card-lg border border-gray-100 py-1 min-w-[160px] animate-fade-in">
-      <MenuItem icon={Eye}      label="View"             onClick={onOpen}     />
-      <MenuItem icon={Pencil}   label="Edit"             onClick={onEdit}     />
-      <MenuItem icon={Calendar} label="Schedule Meeting" onClick={onSchedule} />
-      <MenuItem icon={Trash2}   label="Delete"           onClick={onDelete}   danger />
-    </div>
-  )
-}
-
-function MenuItem({ icon: Icon, label, onClick, danger }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-medium transition-colors
-        ${danger ? 'text-red-500 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-50'}`}
-    >
-      <Icon size={13} /> {label}
-    </button>
-  )
-}
+export default OpportunitiesTable

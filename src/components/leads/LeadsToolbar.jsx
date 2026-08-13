@@ -36,6 +36,7 @@ import { isManager }     from '../../lib/permissions.js'
 import { ImportModal }   from '../import-export/ImportModal.jsx'
 import { ExportButton }  from '../import-export/ExportButton.jsx'
 import { ViewHeader }    from '../ui/ViewHeader.jsx'
+import { Segmented, SegButton } from '../ui/Segmented.jsx'
 
 export function LeadsToolbar({ total, filtered }) {
   const {
@@ -140,32 +141,8 @@ export function LeadsToolbar({ total, filtered }) {
   )
 }
 
-// Small shared segmented control. Local rather than in ui/ because it has
-// exactly two callers, both in this file. It graduates when Opportunities needs
-// the same Kanban toggle — one more caller is the point at which a shared
-// component stops being a guess.
-function Segmented({ children }) {
-  return (
-    <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
-      {children}
-    </div>
-  )
-}
-
-function SegButton({ active, onClick, children }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium
-        transition-colors duration-120
-        ${active
-          ? 'bg-white text-gray-900 shadow-sm'
-          : 'text-gray-500 hover:text-gray-900'
-        }`}
-    >
-      {children}
-    </button>
-  )
-}
+// step044: Segmented and SegButton moved to components/ui/Segmented.jsx now
+// that Opportunities is the second caller — which is the graduation condition
+// the step041 note set for them. Markup unchanged.
 
 export default LeadsToolbar
