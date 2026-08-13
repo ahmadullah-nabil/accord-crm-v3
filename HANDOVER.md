@@ -238,11 +238,11 @@ If a page is empty, suspect a stale token before suspecting a policy.
 
 **3. Decide the 5-vs-6-row grid** (Dashboard job 2, still unanswered).
 
-**4. Then step 13 — the polymorphic link model.** It was correctly deferred
-until tenancy landed; it now has its answer (rows are tenant-scoped) and can be
-decided. `email_messages` links to lead/contact/opportunity as separate columns;
-extending to tasks and meetings means more columns or an
-`(entity_type, entity_id)` pair. **Decide once, before mounting anywhere.**
+**4. Step 13 is DONE — and it was never an open decision.** The roadmap claimed
+`email_messages` links to lead/contact/opportunity as separate columns. **It does
+not.** There are no per-entity columns anywhere; the `(type, id)` pair is already
+in use on six tables. `025_polymorphic_links.sql` settles the convention, adds
+the two missing indexes, and constrains the TEXT ids. See below.
 
 ---
 
@@ -401,8 +401,8 @@ data model, monthly calendar, create-on-date-click, calendar filters ✅
 **22. Multi-tenant foundation + isolation ✅** (022 / 022a / 023 — app testing pending)
 
 ### ── NEXT ──
-13. **Settle the polymorphic link model.** Now unblocked — rows are
-    tenant-scoped. Decide once, before mounting anywhere.
+13. **Polymorphic link model ✅** — `025`. Was already decided six times over;
+    the file documents the convention rather than changing it.
 
 ### Then
 14. **Attachments** (Phase 1b). Graph caps `sendMail` near 4 MB; Gmail has a
@@ -434,3 +434,88 @@ data model, monthly calendar, create-on-date-click, calendar filters ✅
     stored, so additive. **Start it when users complain, not because a plan says
     "RSVP".**
 26. Automation, recurring tasks, analytics, mobile push, offline.
+
+---
+
+# ADDENDUM — later in the same session
+
+Everything above was written mid-session. This part supersedes it where they
+disagree.
+
+## Migrations added after the original handover
+
+| File | What |
+|---|---|
+| `023a_fix_profiles_recursion.sql` | **Fixed a bug 023 caused** — every UPDATE on `profiles` failed with `infinite recursion detected in policy`. SELECT worked, so a read-only walkthrough looked fine. Cause: `014`'s admin policy does `SELECT FROM profiles` inside a policy *on* profiles; 023's restrictive policy named `public.profiles.id` in its body and closed the cycle. Fix: the membership test moved into `shares_org_with()`, a SECURITY DEFINER function, so the policy body names no table at all. |
+| `024_org_onboarding.sql` | `org_invitations`, a trigger on `auth.users` that turns an invitation into a membership **before the first token is minted**, `provision_organization()`, `my_membership_status()`, and a backfill for anyone created between 022 and then. |
+| `024a_invitation_org_default.sql` | **Fixed a bug 024 caused** — inviting failed with an RLS error even as Admin. `org_invitations.org_id` was declared NOT NULL with **no** `DEFAULT current_org_id()`, unlike the other nine tables. The client correctly does not send `org_id`, so the value was NULL, `NULL = current_org_id()` is NULL, and Postgres reported a missing value as a permissions failure. |
+| `025_polymorphic_links.sql` | Step 13. Indexes on `meetings`/`tasks` link pairs, UUID-shape CHECKs on the TEXT ids, and a `crm_entity_type` domain for future columns. |
+
+## Frontend added
+
+| File | What |
+|---|---|
+| `src/services/invitationService.js` | Invitation CRUD + `my_membership_status` RPC |
+| `src/hooks/useInvitations.js` | Query hooks |
+| `src/components/users/UserCreateModal.jsx` | **Rewritten as an invite form.** No name field, no temp password — the person supplies both at signup |
+| `src/components/users/PendingInvitations.jsx` | Panel on the Users page: copy link, renew, revoke |
+| `src/components/auth/NoOrganization.jsx` | Explains "you are in no organisation" instead of an empty CRM |
+| `src/layouts/AppLayout.jsx` | Mounts the org gate — **fails open**, deliberately |
+
+Build: **2317 modules**.
+
+## Step 13, correctly stated
+
+There are **no per-entity columns** in this schema. The `(type, id)` pair is on
+six tables, with two names and two types:
+
+```
+activities       entity_type  / entity_id   TEXT
+notifications    entity_type  / entity_id   UUID
+timeline_events  entity_type  / entity_id   TEXT   (a view)
+email_messages   related_type / related_id  UUID
+meetings         related_type / related_id  TEXT
+tasks            related_type / related_id  TEXT
+```
+
+**The naming split is kept — it encodes a real distinction.** `related_*` means
+*this record is about that record* (a user set it). `entity_*` means *this record
+points at that record from a log* (the system wrote it as provenance). Rule for
+new tables: user-chosen → `related_*`; system-written history → `entity_*`.
+
+**Neither ever gets a foreign key.** A deleted lead must not delete the audit
+trail of what was done to it.
+
+The type split is half-fixed: `meetings`/`tasks` now carry a UUID-shape CHECK
+(verified zero non-UUID values first). `activities.entity_id` stays TEXT and
+unconstrained on purpose — a log must accept what happened, and rejecting a
+write because the subject looks odd loses the record you would most want.
+
+**This unblocks step 15** — a single `{ type, id, label }` reference works
+against all six tables with no further schema work.
+
+## Still not done
+
+1. **Job 2 of Dashboard step 12** — the 5-vs-6-row calendar grid. Still Rayhan's
+   call, now a desktop-only cost since the agenda has no fixed row count.
+2. **`lib/permissions.js` still reads `profiles.role`.** `memberships.role` is
+   the source of truth, mirrored by trigger. Delete the column and its trigger in
+   the same commit that moves permissions onto memberships.
+3. **No org switcher.** Not needed until someone holds two memberships;
+   `my_membership_status().org_count` is how the app will know.
+4. **No platform-support functions.** `platform_admins` and
+   `platform_access_log` exist and are referenced by nothing.
+5. **Nobody has tested a real end-to-end invite** — invite an address you
+   control, sign up in a private window, confirm you land in the CRM with data.
+
+## The pattern worth carrying forward
+
+Five bugs surfaced this session; three were caused by these very migrations, and
+**two were found only by clicking in the live app**, not by any SQL check:
+
+- The invitation `org_id` default — every SQL verification passed.
+- The verify script's own expectation was wrong and reported 28 forever.
+
+The lesson that keeps repeating: *"the page loads"* and *"the feature works"* are
+different claims. The profiles recursion broke every write while every read kept
+working, and looked completely healthy on a walkthrough. **Test a write.**

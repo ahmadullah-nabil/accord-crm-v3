@@ -4,6 +4,7 @@ import { useWorkspaceUsers, useSetUserActive } from '../hooks/useUserManagement.
 import { UsersTable }      from '../components/users/UsersTable.jsx'
 import { UserEditModal }   from '../components/users/UserEditModal.jsx'
 import { UserCreateModal } from '../components/users/UserCreateModal.jsx'
+import { PendingInvitations } from '../components/users/PendingInvitations.jsx'
 import { ROLES }           from '../lib/users.js'
 
 // ── Summary cards ─────────────────────────────────────────────────────────────
@@ -146,6 +147,11 @@ export function UsersPage() {
             <UserPlus size={14} /> Add User
           </button>
         </div>
+
+        {/* Invited but not signed up yet. Above the table because it is the
+            list that needs action; the table below is steady state. Renders
+            nothing at all when there is nothing pending. */}
+        <PendingInvitations />
 
         {/* Users table */}
         <UsersTable
