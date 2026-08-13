@@ -114,14 +114,34 @@ FROM checks ORDER BY n;
 
 
 -- ───────────────────────────────────────────────────────────────────────────
--- NOT AUTOMATED — the state 022 deliberately leaves behind
+-- ISOLATION STATUS — corrected for the approach 023 actually took
 -- ───────────────────────────────────────────────────────────────────────────
--- The query below is the reason 023 exists. It counts policies that do not
--- mention org_id, i.e. every policy that still lets one tenant reach another.
--- Expect a large number here after 022. Expect ZERO after 023.
-SELECT count(*) AS policies_not_yet_org_scoped
-FROM pg_policies
-WHERE schemaname = 'public'
-  AND tablename IN ('leads','contacts','tasks','meetings','opportunities',
-                    'activities','notifications','email_messages','teams')
-  AND COALESCE(qual,'') || COALESCE(with_check,'') NOT LIKE '%org_id%';
+-- An earlier version of this file counted policies whose expression does not
+-- mention org_id, and said that number should fall to zero after 023.
+--
+-- THAT WAS WRONG, and it will read 28 forever. 023 does not rewrite the 28
+-- permissive policies — it deliberately leaves their role logic untouched and
+-- adds a RESTRICTIVE policy per table, which Postgres ANDs with all of them.
+-- So the 28 legitimately never mention org_id. The old count measured the
+-- abandoned plan, not the security of the database.
+--
+-- This is the real check. Before 023: every row NOT ISOLATED.
+-- After 023: 11 rows, all isolated.
+SELECT
+  t.tablename,
+  CASE WHEN p.policyname IS NULL
+       THEN '*** NOT ISOLATED ***'
+       ELSE 'isolated' END AS status
+FROM (VALUES ('leads'),('contacts'),('tasks'),('meetings'),('opportunities'),
+             ('activities'),('notifications'),('email_messages'),('teams'),
+             ('company_settings'),('profiles')) t(tablename)
+LEFT JOIN pg_policies p
+       ON p.schemaname='public'
+      AND p.tablename = t.tablename
+      AND p.permissive = 'RESTRICTIVE'
+ORDER BY 2, 1;
+
+-- And 022a: three triggers, or service-role inserts still fail.
+SELECT count(*) AS fill_org_triggers_expect_3
+FROM pg_trigger
+WHERE tgname IN ('email_messages_fill_org','meetings_fill_org','activities_fill_org');
