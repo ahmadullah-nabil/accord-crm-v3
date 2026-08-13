@@ -17,6 +17,7 @@ import {
   Activity, UserPlus, ArrowRight, CheckCircle2,
   RotateCcw, FileText,
 } from 'lucide-react'
+import { localISODate } from '../../lib/dates.js'
 
 const fmt = (n) =>
   n >= 1_000_000 ? `৳${(n / 1_000_000).toFixed(1)}M`
@@ -63,7 +64,7 @@ export function OppDetailPanel() {
     if (!opp) return
     const nextWeek = (() => {
       const d = new Date(); d.setDate(d.getDate() + 7)
-      return d.toISOString().split('T')[0]
+      return localISODate(d)
     })()
     createTask({
       relatedType: 'Meeting', relatedId: opp.id,

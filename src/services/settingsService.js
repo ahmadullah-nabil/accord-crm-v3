@@ -45,6 +45,7 @@ import {
   DEFAULT_PREFERENCES,
   DEFAULT_PROFILE_EXTRAS,
 } from '../lib/settingsData.js'
+import { todayLocal } from '../lib/dates.js'
 
 // ── Workspace identity ────────────────────────────────────────────────────────
 //
@@ -345,7 +346,7 @@ export async function changePasswordService(currentPassword, newPassword) {
     const current = await getSecuritySettings(userId)
     await saveSecuritySettings(userId, {
       ...current,
-      lastPasswordChange: new Date().toISOString().split('T')[0],
+      lastPasswordChange: todayLocal(),
     })
   } catch (err) {
     console.warn('[settingsService] could not record lastPasswordChange:', err?.message)

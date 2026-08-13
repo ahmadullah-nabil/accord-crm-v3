@@ -21,6 +21,7 @@
 
 import { supabase }        from '../lib/supabaseClient.js'
 import { throwClassified } from '../lib/supabaseErrors.js'
+import { todayLocal } from '../lib/dates.js'
 
 // ── Field mappers ─────────────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ function toDb(payload) {
     row.status = payload.status
     if (payload.status === 'Completed') {
       // Auto-set completed_at when marking done
-      row.completed_at = payload.completedAt ?? new Date().toISOString().split('T')[0]
+      row.completed_at = payload.completedAt ?? todayLocal()
     } else {
       // Clear completed_at when moving away from Completed
       row.completed_at = null
@@ -121,7 +122,7 @@ export async function getTaskById(id) {
 // ── Create a task ─────────────────────────────────────────────────────────────
 
 export async function insertTask(payload) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocal()
   const row   = {
     ...toDb(payload),
     created_at: today,

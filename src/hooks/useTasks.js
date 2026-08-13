@@ -25,6 +25,7 @@ import {
 } from '../services/notificationsService.js'
 import { useInvalidateActivities }      from './useActivities.js'
 import { ownershipStamp }               from '../lib/users.js'
+import { todayLocal } from '../lib/dates.js'
 
 // ── Stable query keys ─────────────────────────────────────────────────────────
 export const taskKeys = {
@@ -294,7 +295,7 @@ export function useToggleTaskComplete() {
       qc.setQueryData(taskKeys.all(), (old = []) =>
         old.map((t) =>
           t.id === id
-            ? { ...t, status: nextStatus, completedAt: nextStatus === 'Completed' ? new Date().toISOString().split('T')[0] : null }
+            ? { ...t, status: nextStatus, completedAt: nextStatus === 'Completed' ? todayLocal() : null }
             : t
         )
       )

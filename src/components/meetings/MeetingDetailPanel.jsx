@@ -17,6 +17,7 @@ import { TimelinePanel }                      from '../timeline/TimelinePanel.js
 import { AttachmentPanel }                   from '../attachments/AttachmentPanel.jsx'
 import { useRoleByName }                      from '../../hooks/useTeam.js'
 import { CalendarSyncCard } from './CalendarSyncCard.jsx'
+import { localISODate } from '../../lib/dates.js'
 
 export function MeetingDetailPanel() {
   const { detailPanelOpen, closeDetail, selectedMeetingId, openEditModal } = useMeetingsStore()
@@ -48,7 +49,7 @@ export function MeetingDetailPanel() {
       ? new Date(meeting.scheduledDate)
       : new Date()
     base.setDate(base.getDate() + 7)
-    return base.toISOString().split('T')[0]
+    return localISODate(base)
   }
 
   const handleCreateFollowUpTask = () => {

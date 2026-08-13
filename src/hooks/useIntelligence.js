@@ -29,6 +29,7 @@ import {
   notifyStaleOpportunity,
   notifyInactiveLead,
 } from '../services/notificationsService.js'
+import { todayLocal, localISODate } from '../lib/dates.js'
 
 // ── Thresholds ────────────────────────────────────────────────────────────────
 const STALE_OPP_DAYS     = 14    // opportunity with no activity for 14 days
@@ -39,7 +40,7 @@ const DEDUP_KEY          = 'accord_intel_last_scan'  // sessionStorage key
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function today() {
-  return new Date().toISOString().split('T')[0]
+  return todayLocal()
 }
 
 function daysBetween(dateStr, referenceStr) {
@@ -114,7 +115,7 @@ async function runIntelligenceScan(userId, qc) {
   try {
     const staleDate = (() => {
       const d = new Date(); d.setDate(d.getDate() - STALE_OPP_DAYS)
-      return d.toISOString().split('T')[0]
+      return localISODate(d)
     })()
 
     const { data: opps } = await supabase
@@ -143,7 +144,7 @@ async function runIntelligenceScan(userId, qc) {
   try {
     const inactiveDate = (() => {
       const d = new Date(); d.setDate(d.getDate() - INACTIVE_LEAD_DAYS)
-      return d.toISOString().split('T')[0]
+      return localISODate(d)
     })()
 
     const { data: leads } = await supabase

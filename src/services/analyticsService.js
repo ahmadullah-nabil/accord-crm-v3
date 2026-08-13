@@ -19,7 +19,7 @@
 //  '90d' → 90 days ago   '1y'  → 365 days ago
 
 import { supabase } from '../lib/supabaseClient.js'
-import { isRowOverdue } from '../lib/dates.js'
+import { isRowOverdue, localISODate } from '../lib/dates.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ function rangeToDate(range) {
   const d = new Date()
   const days = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 365
   d.setDate(d.getDate() - days)
-  return d.toISOString().split('T')[0]
+  return localISODate(d)
 }
 
 // Group an array by a key-function, applying a value-function to each element

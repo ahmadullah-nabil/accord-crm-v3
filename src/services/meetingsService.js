@@ -22,6 +22,7 @@
 
 import { supabase }        from '../lib/supabaseClient.js'
 import { throwClassified } from '../lib/supabaseErrors.js'
+import { todayLocal } from '../lib/dates.js'
 
 // ── Field mappers ─────────────────────────────────────────────────────────────
 
@@ -177,7 +178,7 @@ export async function getMeetingById(id) {
 // ── Create a meeting ──────────────────────────────────────────────────────────
 
 export async function insertMeeting(payload) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocal()
   const row   = {
     ...toDb(payload),
     created_at: today,

@@ -13,6 +13,7 @@ import {
   resolveNotificationRecipient,
 } from '../services/notificationsService.js'
 import { ownershipStamp, TEAM_MEMBER_NAMES } from '../lib/users.js'
+import { todayLocal } from '../lib/dates.js'
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 //
@@ -159,7 +160,7 @@ export const useLeadsStore = create((set, get) => ({
   // ── updateLead ────────────────────────────────────────────────────────────
   // Optimistic: update in-place immediately, then persist to Supabase.
   updateLead: async (id, data) => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayLocal()
 
     // Captured BEFORE the optimistic write so the post-save comparison sees the
     // true previous assignee, not the one we just painted into local state.
@@ -214,7 +215,7 @@ export const useLeadsStore = create((set, get) => ({
   // Called from the inline stage dropdown and kanban drag-drop.
   // Optimistic: update in-place, then persist.
   updateStage: async (id, stage) => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayLocal()
 
     // Optimistic
     set((s) => ({

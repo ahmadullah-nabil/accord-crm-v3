@@ -12,6 +12,7 @@
 import { getLeads }         from './leadsService.js'
 import { getContacts }      from './contactsService.js'
 import { getOpportunities } from './opportunitiesService.js'
+import { todayLocal } from '../lib/dates.js'
 
 // ── CSV builder ───────────────────────────────────────────────────────────────
 
@@ -97,7 +98,7 @@ const OPPORTUNITY_EXPORT_FIELDS = [
 
 // ── Date-stamped filename helper ──────────────────────────────────────────────
 function filename(entity) {
-  const date = new Date().toISOString().split('T')[0]
+  const date = todayLocal()
   return `accord-crm-${entity}-export-${date}.csv`
 }
 

@@ -21,6 +21,7 @@
 
 import { supabase }         from '../lib/supabaseClient.js'
 import { throwClassified }  from '../lib/supabaseErrors.js'
+import { todayLocal } from '../lib/dates.js'
 
 // ── Field mappers ─────────────────────────────────────────────────────────────
 
@@ -128,7 +129,7 @@ export async function getLeadById(id) {
 // ── Create a lead ─────────────────────────────────────────────────────────────
 
 export async function insertLead(payload) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocal()
   const row   = {
     ...toDb(payload),
     created_at:    today,
@@ -151,7 +152,7 @@ export async function insertLead(payload) {
 export async function patchLead(id, payload) {
   const row = {
     ...toDb(payload),
-    last_activity: new Date().toISOString().split('T')[0],
+    last_activity: todayLocal(),
   }
 
   const { data, error } = await supabase
@@ -172,7 +173,7 @@ export async function patchLeadStage(id, stage) {
     .from('leads')
     .update({
       stage,
-      last_activity: new Date().toISOString().split('T')[0],
+      last_activity: todayLocal(),
     })
     .eq('id', id)
     .select()
@@ -214,7 +215,7 @@ export async function convertContactToLead(contact, user) {
     throw new Error('This contact has already been converted to a lead.')
   }
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocal()
 
   // Step 1 — insert lead
   const { data: leadRow, error: leadErr } = await supabase

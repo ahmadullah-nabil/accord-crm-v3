@@ -13,16 +13,17 @@ import { getTasks }         from '../services/tasksService.js'
 import { getMeetings }      from '../services/meetingsService.js'
 import { taskKeys }         from './useTasks.js'
 import { meetingKeys }      from './useMeetings.js'
+import { todayLocal, localISODate } from '../lib/dates.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function todayStr() {
-  return new Date().toISOString().split('T')[0]
+  return todayLocal()
 }
 
 function daysFromNow(days) {
   const d = new Date()
   d.setDate(d.getDate() + days)
-  return d.toISOString().split('T')[0]
+  return localISODate(d)
 }
 
 // ── My Tasks ──────────────────────────────────────────────────────────────────

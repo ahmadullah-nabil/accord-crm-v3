@@ -1,6 +1,7 @@
 // ─── Opportunities Service ────────────────────────────────────────────────────
 import { supabase }        from '../lib/supabaseClient.js'
 import { throwClassified } from '../lib/supabaseErrors.js'
+import { todayLocal } from '../lib/dates.js'
 
 // ── Field mappers ─────────────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ export async function getOpportunityById(id) {
 }
 
 export async function insertOpportunity(payload) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocal()
   const row = { ...toDb(payload), created_at: today, last_activity: today }
   const { data, error } = await supabase
     .from('opportunities')
@@ -81,7 +82,7 @@ export async function insertOpportunity(payload) {
 }
 
 export async function patchOpportunity(id, payload) {
-  const row = { ...toDb(payload), last_activity: new Date().toISOString().split('T')[0] }
+  const row = { ...toDb(payload), last_activity: todayLocal() }
   const { data, error } = await supabase
     .from('opportunities')
     .update(row)
@@ -95,7 +96,7 @@ export async function patchOpportunity(id, payload) {
 export async function patchOpportunityStage(id, stage) {
   const { data, error } = await supabase
     .from('opportunities')
-    .update({ stage, last_activity: new Date().toISOString().split('T')[0] })
+    .update({ stage, last_activity: todayLocal() })
     .eq('id', id)
     .select()
     .single()

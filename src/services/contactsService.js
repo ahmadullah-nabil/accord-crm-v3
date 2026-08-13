@@ -18,6 +18,7 @@
 
 import { supabase }        from '../lib/supabaseClient.js'
 import { throwClassified } from '../lib/supabaseErrors.js'
+import { todayLocal } from '../lib/dates.js'
 
 // ── Field mappers ─────────────────────────────────────────────────────────────
 
@@ -96,7 +97,7 @@ export async function getContactById(id) {
 // ── Create a contact ──────────────────────────────────────────────────────────
 
 export async function insertContact(payload) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocal()
   const row   = {
     ...toDb(payload),
     // last_activity is set by toDb for mutations, also set created_at explicitly
@@ -120,7 +121,7 @@ export async function insertContact(payload) {
 export async function patchContact(id, payload) {
   const row = {
     ...toDb(payload),
-    last_activity: new Date().toISOString().split('T')[0],
+    last_activity: todayLocal(),
   }
 
   const { data, error } = await supabase

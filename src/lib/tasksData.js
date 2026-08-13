@@ -272,12 +272,10 @@ export const PRIORITY_CONFIG = {
   'Urgent': { label: 'Urgent', color: 'bg-red-50 text-red-700',       bar: 'bg-red-500'     },
 }
 
-// Helper: is a task overdue (dueDate passed, not completed)?
-export function isTaskOverdue(task) {
-  if (task.status === 'Completed') return false
-  if (!task.dueDate) return false
-  return new Date(task.dueDate) < new Date(new Date().toDateString())
-}
+// isTaskOverdue lived here and had NO importers — dead since before step039.
+// The canonical one is in lib/dates.js, alongside the local-date helper it
+// depends on. Two functions of the same name in sibling lib files is a trap:
+// importing the wrong one is silent, and only one of them is maintained.
 
 // Helper: days until due (negative = overdue)
 export function daysUntilDue(dueDate) {
