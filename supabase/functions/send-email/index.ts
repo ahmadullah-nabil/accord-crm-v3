@@ -47,6 +47,8 @@ import {
   parseRecipients, applyVariables, sanitizeHtml, appendSignature,
   replySubject, assertWithinLimits,
 } from './compose.ts'
+import { parseAttachmentIds } from '../_shared/attachments.ts'
+import { loadAttachments, linkAttachments } from './attachments.ts'
 
 interface SendRequest {
   to: unknown
@@ -69,6 +71,15 @@ interface SendRequest {
     providerThreadId?: string
   }
   replyTo?: string
+  /**
+   * Ids from public.attachments — never file bytes.
+   *
+   * The browser has already uploaded to Storage under an org-prefixed path
+   * that Storage RLS enforced. Posting bytes here instead would move the file
+   * through a service-role code path where no policy applies, and would put a
+   * multi-megabyte body in front of every send.
+   */
+  attachmentIds?: unknown
 }
 
 Deno.serve(async (req) => {
@@ -94,6 +105,10 @@ Deno.serve(async (req) => {
 
     const variables = body.variables ?? {}
     const isReply = Boolean(body.thread?.inReplyTo)
+
+    // Shape-checked here so a malformed id is a 400 from this function rather
+    // than a Postgres uuid cast error surfacing as a 500 further down.
+    const attachmentIds = parseAttachmentIds(body.attachmentIds)
 
     const rawSubject = applyVariables(String(body.subject ?? ''), variables)
     const subject = isReply ? replySubject(rawSubject) : rawSubject.trim()
@@ -171,6 +186,18 @@ Deno.serve(async (req) => {
     // and the row is all we have left.
     const messageId = generateMessageId(from.email)
 
+    // ── Attachments ───────────────────────────────────────────────────────────
+    // Deliberately BEFORE the log row. Everything that can be known to fail —
+    // a deleted file, another tenant's file, a payload over the provider's
+    // ceiling — fails here, while there is still nothing written to explain.
+    // Validating after the insert would leave 'queued' rows for messages that
+    // were never sendable, and no retry can ever clear those.
+    //
+    // It also has to be AFTER the account lookup: the size limit depends on
+    // which provider is sending, and that is not known until the account is
+    // resolved.
+    const attached = await loadAttachments(admin, user.id, attachmentIds, account.provider)
+
     const input: SendEmailInput = {
       from,
       to, cc, bcc, replyTo,
@@ -181,7 +208,7 @@ Deno.serve(async (req) => {
       inReplyTo:        body.thread?.inReplyTo ?? null,
       references:       body.thread?.references ?? [],
       providerThreadId: body.thread?.providerThreadId ?? null,
-      attachments:      [],   // Phase 1b
+      attachments:      attached.files,
     }
 
     // ── Log BEFORE sending ────────────────────────────────────────────────────
@@ -219,6 +246,12 @@ Deno.serve(async (req) => {
       console.error('[send-email] could not write the log row:', logErr.message)
       throw logErr
     }
+
+    // Linked before the send, not after. 026 makes attachment_id ON DELETE
+    // RESTRICT, so writing the link now means the file is protected from
+    // deletion the moment it is committed to a send — including when the send
+    // then fails, which is exactly when someone wants to know what was on it.
+    await linkAttachments(admin, logRow.id, attached.ids)
 
     // ── Send ──────────────────────────────────────────────────────────────────
     const auth: ProviderAuth = {
@@ -289,9 +322,10 @@ Deno.serve(async (req) => {
         metadata: {
           emailMessageId: logRow.id,
           subject,
-          to:       to.map((a) => a.email),
-          provider: account.provider,
-          preview:  text.slice(0, 500),
+          to:          to.map((a) => a.email),
+          provider:    account.provider,
+          preview:     text.slice(0, 500),
+          attachments: attached.files.map((f) => f.filename),
         },
         occurred_at: new Date().toISOString(),
       })
@@ -308,6 +342,7 @@ Deno.serve(async (req) => {
       providerMessageId: result.providerMessageId,
       providerThreadId:  result.providerThreadId,
       messageId:         result.messageId || messageId,
+      attachmentCount:   attached.files.length,
       // So the UI can say "saved to your Sent folder" only where that is
       // actually true. See SentCopyBehaviour in types.ts.
       sentCopy:          adapter.sentCopy,

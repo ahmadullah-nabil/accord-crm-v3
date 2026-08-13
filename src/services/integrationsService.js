@@ -193,6 +193,8 @@ export const ERROR_MESSAGES = {
   no_email_account:       'No mailbox is connected yet. Connect one in Settings to send email.',
   send_failed:            'The provider would not send that message. The details are below.',
   invalid_recipient:      'One of the email addresses is not valid. Check the recipients and try again.',
+  attachment_too_large:   'The attached files are too large for this mailbox. The details are below.',
+  attachment_failed:      'A file could not be attached, so nothing was sent. The details are below.',
   provider_error:         'Something went wrong connecting to the provider. Please try again.',
   not_deployed:           'Integration service unavailable — the Accord CRM integration functions have not been deployed to this Supabase project yet. Connecting accounts will not work until they are.',
 }

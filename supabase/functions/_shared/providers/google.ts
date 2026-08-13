@@ -38,6 +38,27 @@ const REVOKE_URL = 'https://oauth2.googleapis.com/revoke'
 const USERINFO   = 'https://www.googleapis.com/oauth2/v3/userinfo'
 const SEND_URL   = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
 
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │ WHY THERE ARE TWO SEND URLS                                               │
+// ├───────────────────────────────────────────────────────────────────────────┤
+// │ SEND_URL takes the raw message as a base64url STRING inside a JSON body.  │
+// │ That is a metadata request, and Google caps those at a few megabytes —    │
+// │ a quotation PDF turns it into 413 Request Entity Too Large.               │
+// │                                                                            │
+// │ UPLOAD_URL is the same method's media endpoint: the message travels as    │
+// │ its own `message/rfc822` part rather than as a JSON string field, and     │
+// │ the ceiling becomes Gmail's real 25 MB message limit.                     │
+// │                                                                            │
+// │ uploadType=multipart, not =media, because threadId is METADATA. The media │
+// │ form carries the bytes and nothing else, so using it would silently drop  │
+// │ threading on every message that has a file — the reply would arrive as a  │
+// │ new conversation in the sender's own mailbox.                             │
+// │                                                                            │
+// │ Same scope. gmail.send covers both; this is a transport choice, not a     │
+// │ permission one.                                                            │
+// └───────────────────────────────────────────────────────────────────────────┘
+const UPLOAD_URL = 'https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=multipart'
+
 // Identity scopes only — needed to label the connected account in the UI.
 const BASE_SCOPES = ['openid', 'email', 'profile']
 
@@ -150,17 +171,31 @@ export const googleAdapter: ProviderAdapter = {
     // In-Reply-To / References headers, which buildMimeMessage already wrote.
     // Gmail additionally requires a matching Subject before it will honour
     // threadId, which is why the composer prefixes replies with "Re: ".
-    const body: Record<string, unknown> = { raw: base64Url(raw) }
-    if (input.providerThreadId) body.threadId = input.providerThreadId
+    const metadata: Record<string, unknown> = {}
+    if (input.providerThreadId) metadata.threadId = input.providerThreadId
 
-    const res = await fetch(SEND_URL, {
+    const hasFiles = (input.attachments?.length ?? 0) > 0
+
+    // The no-attachment path is UNCHANGED and still the default. It is the one
+    // that has been sending real mail; routing every message through the upload
+    // endpoint to avoid one branch would put a tested path at risk to tidy up
+    // an untested one.
+    const req = hasFiles
+      ? gmailUploadRequest(auth, metadata, raw)
+      : {
+          url: SEND_URL,
+          headers: {
+            Authorization: auth.authorization,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          } as Record<string, string>,
+          body: JSON.stringify({ ...metadata, raw: base64Url(raw) }),
+        }
+
+    const res = await fetch(req.url, {
       method: 'POST',
-      headers: {
-        Authorization: auth.authorization,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(body),
+      headers: req.headers,
+      body: req.body,
     })
 
     const text = await res.text()
@@ -171,6 +206,20 @@ export const googleAdapter: ProviderAdapter = {
       const detail = payload?.error?.message ?? text.slice(0, 300)
       const reason = payload?.error?.errors?.[0]?.reason ?? String(res.status)
       console.error(`[google] send failed ${res.status} ${reason}: ${detail}`)
+
+      // 413 means the payload was over Gmail's ceiling. send-email checks sizes
+      // before it writes anything, so reaching here means the limit table and
+      // Gmail disagree — say that plainly rather than offering a retry that
+      // will fail identically every time.
+      if (res.status === 413) {
+        throw new IntegrationError(
+          'attachment_too_large',
+          'Gmail rejected the message as too large. Send the file as a link instead.',
+          400,
+          'payloadTooLarge',
+        )
+      }
+
       throw new IntegrationError(
         'send_failed',
         `Gmail rejected the message: ${detail}`,
@@ -323,5 +372,51 @@ function googleEventResult(res: Record<string, unknown>): CalendarEventResult {
     etag:            (res.etag as string) ?? null,
     meetingUrl:      video?.uri ?? (res.hangoutLink as string) ?? null,
     htmlLink:        (res.htmlLink as string) ?? null,
+  }
+}
+
+// ─── Gmail multipart upload ───────────────────────────────────────────────────
+//
+// A multipart/related body with exactly two parts, in this order:
+//   1. application/json  — the Message resource (threadId, when we have one)
+//   2. message/rfc822    — the MIME message itself
+//
+// Order is not stylistic: Google reads the metadata part first and treats the
+// remaining part as the media. Swapping them makes the request fail as
+// malformed rather than as anything that names the cause.
+//
+// The boundary is randomly generated per request rather than fixed. A fixed
+// boundary is a correctness bug waiting for the first message whose body
+// happens to contain that string — at which point the message truncates at
+// exactly that point and nobody can reproduce it.
+function gmailUploadRequest(
+  auth: ProviderAuth,
+  metadata: Record<string, unknown>,
+  raw: string,
+): { url: string; headers: Record<string, string>; body: string } {
+  const boundary = `accord_${crypto.randomUUID().replace(/-/g, '')}`
+  const CRLF = '\r\n'
+
+  const body = [
+    `--${boundary}`,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    JSON.stringify(metadata),
+    `--${boundary}`,
+    'Content-Type: message/rfc822',
+    '',
+    raw,
+    `--${boundary}--`,
+    '',
+  ].join(CRLF)
+
+  return {
+    url: UPLOAD_URL,
+    headers: {
+      Authorization: auth.authorization,
+      'Content-Type': `multipart/related; boundary=${boundary}`,
+      Accept: 'application/json',
+    },
+    body,
   }
 }

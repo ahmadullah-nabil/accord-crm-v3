@@ -69,6 +69,30 @@ export function base64EncodeText(text: string): string {
   return base64Encode(new TextEncoder().encode(text))
 }
 
+/**
+ * Decode base64 back to bytes.
+ *
+ * Exists for Zoho, which is the one provider that does not take a MIME message
+ * at all: its Upload Attachments API wants the raw binary in the request body
+ * and hands back a reference to quote in the send call. EmailAttachment carries
+ * base64 because that is what the other two providers need inside a MIME part,
+ * so Zoho decodes rather than every attachment carrying two representations of
+ * the same bytes that could drift apart.
+ */
+// The return type is INFERRED, not annotated, and the buffer is allocated
+// explicitly. `new Uint8Array(length)` is typed over ArrayBufferLike, which
+// includes SharedArrayBuffer and is therefore not a legal fetch body; building
+// over a real ArrayBuffer produces the narrower type that `body:` accepts.
+// Writing `: Uint8Array` here would widen it straight back and the Zoho upload
+// would not compile.
+export function base64Decode(b64: string) {
+  const binary = atob(b64)
+  const buffer = new ArrayBuffer(binary.length)
+  const out = new Uint8Array(buffer)
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i)
+  return out
+}
+
 /** Gmail wants base64url — URL-safe alphabet, no padding. */
 export function base64Url(text: string): string {
   return base64EncodeText(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')

@@ -86,6 +86,11 @@ export async function sendEmail(opts) {
       related:   opts.related ?? null,
       thread:    opts.thread ?? null,
       replyTo:   opts.replyTo ?? null,
+      // Ids only. The file is already in Storage under an org-scoped path that
+      // Storage RLS enforced at upload time; posting bytes here would route
+      // them through the Edge Function's service-role client instead, where no
+      // policy applies, and put megabytes in front of every send.
+      attachmentIds: opts.attachmentIds ?? [],
     },
   })
   if (error || data?.error) throw normaliseIntegrationError(error, data)

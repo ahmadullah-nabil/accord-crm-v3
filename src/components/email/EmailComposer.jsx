@@ -25,7 +25,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   X, Mail, Bold, Italic, List, ListOrdered, Link2, Eye, PenLine,
-  AlertCircle, CheckCircle2, Send, Plug,
+  AlertCircle, CheckCircle2, Send, Plug, Paperclip,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -36,6 +36,8 @@ import {
   TEMPLATE_VARIABLES, variablesFor, previewWithVariables,
 } from '../../services/emailService.js'
 import { ERROR_MESSAGES } from '../../services/integrationsService.js'
+import { useAttachments } from '../../hooks/useAttachments.js'
+import { formatBytes } from '../../services/attachmentService.js'
 
 export function EmailComposer({ open, onClose, record, relatedType }) {
   const navigate = useNavigate()
@@ -47,6 +49,24 @@ export function EmailComposer({ open, onClose, record, relatedType }) {
   const relatedId = record?.id ?? null
   const { data: anchor } = useThreadAnchor(relatedType, relatedId, open && canSend)
   const sendMutation = useSendEmail(relatedType, relatedId)
+
+  // ┌───────────────────────────────────────────────────────────────────────┐
+  // │ THE COMPOSER PICKS FILES, IT DOES NOT UPLOAD THEM                     │
+  // ├───────────────────────────────────────────────────────────────────────┤
+  // │ Files are uploaded on the record, by AttachmentPanel, and this offers │
+  // │ what is already there. Two reasons, and neither is about saving work: │
+  // │                                                                        │
+  // │ A file attached to a quotation is part of the record's history — the  │
+  // │ signed contract, the filled RFP. Uploading through the composer would │
+  // │ mean the only copy lived inside a sent message, so the CRM could mail │
+  // │ a document it could not then show you.                                 │
+  // │                                                                        │
+  // │ And the send path posts IDS, never bytes. A file uploaded here would  │
+  // │ still have to reach Storage first to have an id, so a composer-side   │
+  // │ uploader would be a second route to the same place, with its own      │
+  // │ progress, retry and failure handling to keep in step with the first.  │
+  // └───────────────────────────────────────────────────────────────────────┘
+  const { data: recordFiles = [] } = useAttachments(relatedType, relatedId)
 
   const bodyRef = useRef(null)
 
@@ -60,6 +80,7 @@ export function EmailComposer({ open, onClose, record, relatedType }) {
   const [signatureOpen, setSignatureOpen] = useState(false)
   const [signatureDraft, setSignatureDraft] = useState('')
   const [sent, setSent] = useState(null)
+  const [attachIds, setAttachIds] = useState([])
 
   const variables = useMemo(() => variablesFor(record), [record])
 
@@ -72,6 +93,7 @@ export function EmailComposer({ open, onClose, record, relatedType }) {
     setSubject(anchor?.subject ? `Re: ${anchor.subject.replace(/^re:\s*/i, '')}` : '')
     setPreview(false)
     setSent(null)
+    setAttachIds([])
     sendMutation.reset()
     if (bodyRef.current) bodyRef.current.innerHTML = ''
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,6 +147,11 @@ export function EmailComposer({ open, onClose, record, relatedType }) {
               providerThreadId: anchor.providerThreadId,
             }
           : null,
+        // Ids, not bytes. The Edge Function re-checks that every one of these
+        // belongs to an organisation this user is a member of — it runs with
+        // the service role, where RLS does not apply, so a client-side filter
+        // would be the only check and therefore no check at all.
+        attachmentIds: attachIds,
       },
       { onSuccess: (result) => setSent(result) },
     )
@@ -385,10 +412,57 @@ export function EmailComposer({ open, onClose, record, relatedType }) {
               </div>
             </div>
 
+            {/* Attachments */}
+            {relatedType && relatedId && (
+              <div className="px-6 pt-3 border-t border-gray-100 flex-shrink-0">
+                {recordFiles.length === 0 ? (
+                  <p className="text-[10px] text-gray-400 flex items-center gap-1.5">
+                    <Paperclip size={11} />
+                    Upload files in the Files section of this record to attach them.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                      <Paperclip size={11} />
+                      Attach from this record
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                      {recordFiles.map((file) => {
+                        const on = attachIds.includes(file.id)
+                        return (
+                          <button
+                            key={file.id}
+                            type="button"
+                            onClick={() => setAttachIds((prev) =>
+                              prev.includes(file.id)
+                                ? prev.filter((id) => id !== file.id)
+                                : [...prev, file.id],
+                            )}
+                            title={file.filename}
+                            className={`flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg border transition-colors ${
+                              on
+                                ? 'bg-teal-50 border-teal-200 text-teal-700'
+                                : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                            }`}
+                          >
+                            {on && <CheckCircle2 size={11} />}
+                            <span className="max-w-[180px] truncate">{file.filename}</span>
+                            <span className="text-gray-400">{formatBytes(file.sizeBytes)}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Footer */}
             <div className="flex items-center justify-between px-6 py-3.5 border-t border-gray-100 flex-shrink-0">
               <p className="text-[10px] text-gray-400">
-                Attachments arrive in the next release.
+                {attachIds.length > 0
+                  ? `${attachIds.length} file${attachIds.length > 1 ? 's' : ''} attached`
+                  : 'Sent from your connected mailbox.'}
               </p>
               <div className="flex items-center gap-2">
                 <button

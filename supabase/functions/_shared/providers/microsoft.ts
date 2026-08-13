@@ -177,10 +177,31 @@ export const microsoftAdapter: ProviderAdapter = {
       const code   = payload?.error?.code ?? String(res.status)
       console.error(`[microsoft] send failed ${res.status} ${code}: ${detail}`)
 
-      // Graph caps a sendMail request at roughly 4 MB. Phase 1 sends no
-      // attachments so this cannot fire yet, but Phase 1b will need the
-      // createUploadSession path for anything larger, and a clear error here
-      // is what will point at it.
+      // ┌─────────────────────────────────────────────────────────────────┐
+      // │ 413 — the request was over Graph's ~4 MB sendMail ceiling.      │
+      // │                                                                  │
+      // │ send-email validates sizes before writing anything, so this      │
+      // │ should be unreachable. It is handled anyway because the check    │
+      // │ uses a static limit and Exchange Online lets an administrator    │
+      // │ set a SMALLER message size for their tenant — a customer can     │
+      // │ therefore have a lower real ceiling than our table knows about.  │
+      // │                                                                  │
+      // │ The message says what to do instead of implying a retry. Graph's │
+      // │ documented way past this is createUploadSession, which must      │
+      // │ create a draft first and therefore needs Mail.ReadWrite; this    │
+      // │ adapter holds Mail.Send only. Raising the ceiling is a consent-  │
+      // │ screen change every Microsoft user would have to re-approve, not │
+      // │ something to reach for on a failed send.                         │
+      // └─────────────────────────────────────────────────────────────────┘
+      if (res.status === 413) {
+        throw new IntegrationError(
+          'attachment_too_large',
+          'Outlook rejected the message as too large. Send the file as a link instead.',
+          400,
+          code,
+        )
+      }
+
       throw new IntegrationError(
         'send_failed',
         `Microsoft rejected the message: ${detail}`,

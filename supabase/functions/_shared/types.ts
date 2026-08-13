@@ -289,6 +289,8 @@ export class IntegrationError extends Error {
       | 'send_failed'            // the provider rejected the message (Phase 1)
       | 'calendar_failed'        // provider rejected an event create/update/cancel
       | 'invalid_recipient'      // a recipient address is malformed (Phase 1)
+      | 'attachment_too_large'   // over the sending provider's ceiling (1b)
+      | 'attachment_failed'      // could not read or upload a file (Phase 1b)
       | 'provider_error'
       | 'unauthorized'
       | 'bad_request',

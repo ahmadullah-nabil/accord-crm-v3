@@ -23,11 +23,12 @@
 import type {
   CalendarEventInput,
   CalendarEventResult,
-  AuthUrlParams, CallbackContext, Capability, ProviderAdapter, ProviderAuth,
-  ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
+  AuthUrlParams, CallbackContext, Capability, EmailAttachment, ProviderAdapter,
+  ProviderAuth, ProviderIdentity, SendEmailInput, SendEmailResult, TokenSet,
 } from '../types.ts'
 import { IntegrationError } from '../types.ts'
 import { postForm, expiresAtFrom } from '../http.ts'
+import { base64Decode } from '../mime.ts'
 
 /** Region code → accounts host. Zoho's published data-centre list. */
 const ACCOUNTS_HOSTS: Record<string, string> = {
@@ -327,6 +328,26 @@ export const zohoAdapter: ProviderAdapter = {
     const mailHost = zohoMailFromApiDomain(auth.apiDomain)
     const account  = await resolveMailAccount(auth, mailHost)
 
+    // ┌───────────────────────────────────────────────────────────────────┐
+    // │ ATTACHMENTS ARE A SEPARATE ROUND TRIP ON THIS PROVIDER            │
+    // ├───────────────────────────────────────────────────────────────────┤
+    // │ Gmail and Graph take a MIME message and the files are simply      │
+    // │ parts inside it. Zoho's send endpoint accepts NO bytes at all —   │
+    // │ it takes a JSON body, and the only way a file reaches it is as a  │
+    // │ REFERENCE into Zoho's own File Store, obtained by uploading the   │
+    // │ bytes to a different endpoint first.                              │
+    // │                                                                    │
+    // │ That is a difference in KIND, not degree, and it is why the       │
+    // │ upload happens here — before anything is sent — rather than being │
+    // │ folded into the send call. If the upload fails, nothing has been  │
+    // │ sent and the error says "could not attach", which is true. Doing  │
+    // │ it the other way round would report a file problem as a failure   │
+    // │ to send, and the user would retry the whole message.              │
+    // └───────────────────────────────────────────────────────────────────┘
+    const uploaded = input.attachments?.length
+      ? await uploadZohoAttachments(auth, mailHost, account.accountId, input.attachments)
+      : []
+
     // Zoho takes recipients as ONE comma-separated string per field, not an
     // array. Display names are dropped: the endpoint documents these as plain
     // address fields, and a "Name <addr>" value is rejected by some DCs.
@@ -347,6 +368,7 @@ export const zohoAdapter: ProviderAdapter = {
     }
     if (input.cc?.length)  body.ccAddress  = addresses(input.cc)
     if (input.bcc?.length) body.bccAddress = addresses(input.bcc)
+    if (uploaded.length)   body.attachments = uploaded
 
     const res = await fetch(`${mailHost}/api/accounts/${account.accountId}/messages`, {
       method: 'POST',
@@ -748,4 +770,157 @@ async function resolveMailAccount(
   const value: ZohoMailAccount = { accountId, fromAddress: String(fromAddress) }
   mailAccountCache.set(key, { value, expiresAt: Date.now() + MAIL_ACCOUNT_TTL_MS })
   return value
+}
+
+// ─── Upload Attachments ───────────────────────────────────────────────────────
+//
+//   POST {mailHost}/api/accounts/{accountId}/messages/attachments
+//        ?fileName=<name>&isInline=false
+//   Content-Type: application/octet-stream
+//   body: the raw bytes
+//
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │ SCOPE — CHECKED, NOT ASSUMED                                              │
+// ├───────────────────────────────────────────────────────────────────────────┤
+// │ This endpoint is documented under ZohoMail.messages.ALL or                │
+// │ ZohoMail.messages.CREATE. CAPABILITY_SCOPES.email already requests        │
+// │ messages.CREATE, so attachments need NO new scope, NO new consent screen  │
+// │ and NO reconnection by existing users.                                    │
+// │                                                                            │
+// │ That was worth verifying before writing any of this: had it needed        │
+// │ ZohoMail.attachments.CREATE, shipping the feature would have invalidated  │
+// │ every live Zoho connection, and that is a decision rather than a commit.  │
+// └───────────────────────────────────────────────────────────────────────────┘
+//
+// One file per request, using the RAW form rather than uploadType=multipart.
+// The multipart form uploads several at once but returns `data` as an ARRAY,
+// while the raw form returns a single OBJECT — and it reports which file failed
+// by failing on that file. With multipart, one bad file in five produces a
+// partial result that has to be reconciled by name against what was sent.
+
+interface ZohoAttachmentRef {
+  storeName: string
+  attachmentName: string
+  attachmentPath: string
+}
+
+async function uploadZohoAttachments(
+  auth: ProviderAuth,
+  mailHost: string,
+  accountId: string,
+  files: EmailAttachment[],
+): Promise<ZohoAttachmentRef[]> {
+  const refs: ZohoAttachmentRef[] = []
+
+  for (const file of files) {
+    // Sequential, not Promise.all. These are multi-megabyte bodies from an Edge
+    // Function with a memory ceiling; uploading five at once means holding five
+    // decoded copies simultaneously, and the failure mode is the whole function
+    // dying rather than one file erroring.
+    refs.push(await uploadOne(auth, mailHost, accountId, file))
+  }
+
+  return refs
+}
+
+async function uploadOne(
+  auth: ProviderAuth,
+  mailHost: string,
+  accountId: string,
+  file: EmailAttachment,
+): Promise<ZohoAttachmentRef> {
+  const params = new URLSearchParams({
+    fileName: file.filename,
+    // Inline attachments are referenced from the HTML by cid:. Zoho renames an
+    // inline file (it prefixes a timestamp) and returns a different name than
+    // the one sent, so the reference must come from the RESPONSE either way.
+    isInline: file.contentId ? 'true' : 'false',
+  })
+
+  const url = `${mailHost}/api/accounts/${accountId}/messages/attachments?${params}`
+
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: auth.authorization,   // Zoho-oauthtoken, never Bearer
+        'Content-Type': 'application/octet-stream',
+        Accept: 'application/json',
+      },
+      // Decoded here rather than carried as bytes on EmailAttachment: the MIME
+      // builder needs base64 for the other two providers, and one field that is
+      // always right beats two that can disagree.
+      body: base64Decode(file.contentBase64),
+    })
+  } catch (err) {
+    throw new IntegrationError(
+      'attachment_failed',
+      `Could not reach Zoho to upload ${file.filename}.`,
+      502,
+      err instanceof Error ? err.name : undefined,
+    )
+  }
+
+  const text = await res.text()
+  let payload: any = null
+  try { payload = JSON.parse(text) } catch { /* non-JSON error body */ }
+
+  // Same two-places-to-fail rule as the send call: Zoho can return HTTP 200
+  // with a failure inside status.code, and trusting res.ok alone would carry a
+  // reference that does not exist into the send body.
+  const apiCode = Number(payload?.status?.code ?? (res.ok ? 200 : res.status))
+  if (!res.ok || apiCode !== 200) {
+    const detail =
+      payload?.data?.moreInfo ??
+      payload?.status?.description ??
+      text.slice(0, 300)
+    console.error(`[zoho] attachment upload failed http=${res.status} api=${apiCode}: ${detail}`)
+
+    // A real, documented state on some Zoho tenants: API attachment upload is
+    // gated behind a per-account upload rule that an administrator must enable.
+    // It is not a bug in this code and no retry clears it, so it gets its own
+    // message rather than a generic upload failure.
+    if (String(detail).includes('UPLOAD_RULE')) {
+      throw new IntegrationError(
+        'attachment_failed',
+        'This Zoho account is not allowed to upload attachments through the API. ' +
+        'A Zoho administrator has to enable it.',
+        400,
+        'UPLOAD_RULE_NOT_CONFIGURED',
+      )
+    }
+
+    throw new IntegrationError(
+      'attachment_failed',
+      `Zoho refused ${file.filename}: ${detail}`,
+      res.status === 429 || res.status >= 500 ? 502 : 400,
+      String(apiCode),
+    )
+  }
+
+  // The raw upload form returns an object; the multipart form returns an array.
+  // Both shapes are accepted so that switching forms later cannot silently
+  // produce a send with no files on it.
+  const node = Array.isArray(payload?.data) ? payload.data[0] : payload?.data
+
+  const ref: ZohoAttachmentRef = {
+    storeName:      String(node?.storeName ?? ''),
+    // The RESPONSE name, never file.filename. Zoho may store the file under a
+    // different name, and the send call resolves the reference by the stored
+    // name — sending our own would attach nothing while still reporting success.
+    attachmentName: String(node?.attachmentName ?? ''),
+    attachmentPath: String(node?.attachmentPath ?? ''),
+  }
+
+  if (!ref.storeName || !ref.attachmentPath) {
+    console.error('[zoho] upload returned no usable reference:', text.slice(0, 300))
+    throw new IntegrationError(
+      'attachment_failed',
+      `Zoho accepted ${file.filename} but returned no reference for it.`,
+      502,
+    )
+  }
+
+  return ref
 }
