@@ -6,6 +6,8 @@ import { useUiStore } from '../stores/uiStore.js'
 import { useIntelligence } from '../hooks/useIntelligence.js'
 import { useNotificationsRealtime } from '../hooks/useNotifications.js'
 import { useAppliedAppearance } from '../hooks/useAppliedAppearance.js'
+import { useMembershipStatus }  from '../hooks/useInvitations.js'
+import { NoOrganization }       from '../components/auth/NoOrganization.jsx'
 
 export function AppLayout() {
   const { mobileMenuOpen, closeMobileMenu, sidebarCollapsed } = useUiStore()
@@ -27,6 +29,28 @@ export function AppLayout() {
   useEffect(() => {
     closeMobileMenu()
   }, [location.pathname, closeMobileMenu])
+
+  // ── Org gate ───────────────────────────────────────────────────────────────
+  // Someone signed in but in no organisation must not see the CRM shell. Every
+  // list would render zero and read as data loss rather than as "you are not on
+  // a team yet" — which is the actual, fixable situation.
+  //
+  // Placed AFTER the hooks above so hook order never changes between renders,
+  // and it returns instead of wrapping so the sidebar and navbar do not mount
+  // around an empty app.
+  //
+  // While the check is in flight, nothing is rendered rather than a spinner:
+  // it resolves in one round trip, and a flash of "no organisation" for a user
+  // who has one would be worse than a blank moment.
+  //
+  // IT FAILS OPEN, on purpose. If the RPC errors, `membership` is undefined and
+  // the app renders as normal. This screen is an EXPLANATION, not a security
+  // boundary — RLS is the boundary, and it is enforced in the database whatever
+  // this component decides. Failing closed would mean one bad deploy of this
+  // check locks every user out of a CRM that is working perfectly.
+  const { data: membership, isLoading: membershipLoading } = useMembershipStatus()
+  if (membershipLoading) return null
+  if (membership && !membership.hasMembership) return <NoOrganization />
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">

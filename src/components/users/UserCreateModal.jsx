@@ -1,23 +1,43 @@
 // ─── UserCreateModal ──────────────────────────────────────────────────────────
 //
-// Admin-only modal to onboard a new workspace user.
+// Admin-only modal to INVITE someone into this organisation.
 //
-// Flow:
-//   1. Admin fills: name, email, role, manager, department
-//   2. A temporary password is auto-generated (shown once)
-//   3. On submit → createWorkspaceUser() in userManagementService:
-//        a. supabase.auth.signUp()       — creates auth.users row
-//        b. Postgres trigger             — auto-creates public.profiles row
-//        c. patchProfile()              — applies role / manager_id / department
-//   4. Success screen shows the temp password for the admin to share
-//   5. New user appears immediately in table, dropdowns, and hierarchy
+// It used to create the account outright: supabase.auth.signUp() from the
+// admin's browser, plus a generated temporary password shown once. That broke
+// when tenancy landed — signUp creates auth.users and a profile, and NOTHING
+// creates a membership. The result was a user with no org: every policy denies,
+// they log in to an empty CRM, and the admin who created them cannot see them
+// either, because they share no org.
+//
+// Now:
+//   1. Admin fills: email, role, manager, department  (no name, no password)
+//   2. On submit → an org_invitations row, scoped to the admin's org by RLS
+//   3. Admin copies the signup link and sends it however they like
+//   4. The person signs up, picks their OWN password, and the
+//      on_auth_user_created_membership trigger (024) turns the invitation into
+//      a membership BEFORE their first token is minted — which matters,
+//      because custom_access_token_hook reads memberships to write the org_id
+//      claim. A membership created a moment later means their first session
+//      has no org and the app looks broken.
+//
+// Two things deliberately went away:
+//
+//   • The temp password. The person sets their own. An admin-chosen password
+//     had to be relayed over WhatsApp anyway and was rarely changed.
+//   • The name field. They type their own at signup, and it lands in
+//     raw_user_meta_data where handle_new_user reads it. An admin guessing the
+//     spelling of a colleague's name is a worse source than the colleague.
+//
+// The invited person does NOT appear in the user list until they accept.
+// Showing them early would mean a row that cannot be assigned work.
 
 import React, { useState, useCallback } from 'react'
 import {
-  X, UserPlus, Eye, EyeOff, Copy, Check,
-  ShieldCheck, AlertTriangle, RefreshCw,
+  X, UserPlus, Copy, Check, Mail,
+  ShieldCheck, AlertTriangle, Link2,
 } from 'lucide-react'
-import { useCreateUser }     from '../../hooks/useUserManagement.js'
+import { useInviteUser }     from '../../hooks/useInvitations.js'
+import { buildInviteLink }   from '../../services/invitationService.js'
 import { useWorkspaceUsers } from '../../hooks/useUserManagement.js'
 import { ROLES }             from '../../lib/users.js'
 import { Avatar }            from '../ui/Avatar.jsx'
@@ -38,28 +58,10 @@ const DEPT_SUGGESTIONS = [
   'Marketing', 'Operations', 'Finance', 'HR', 'Technology',
 ]
 
-// ── Password generator ────────────────────────────────────────────────────────
-
-function generateTempPassword() {
-  const upper   = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
-  const lower   = 'abcdefghjkmnpqrstuvwxyz'
-  const digits  = '23456789'
-  const special = '!@#$%'
-  const all     = upper + lower + digits + special
-  const rand    = (set) => set[Math.floor(Math.random() * set.length)]
-  // Guarantee at least one of each character class
-  const required = [rand(upper), rand(lower), rand(digits), rand(special)]
-  const rest = Array.from({ length: 8 }, () => rand(all))
-  return [...required, ...rest]
-    .sort(() => Math.random() - 0.5)
-    .join('')
-}
-
 // ── Form validation ───────────────────────────────────────────────────────────
 
-function validate({ name, email, role }) {
+function validate({ email, role }) {
   const errors = {}
-  if (!name.trim())              errors.name  = 'Full name is required.'
   if (!email.trim())             errors.email = 'Email address is required.'
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
                                  errors.email = 'Enter a valid email address.'
@@ -71,117 +73,120 @@ function validate({ name, email, role }) {
 
 export function UserCreateModal({ onClose }) {
   const { data: allUsers = [] } = useWorkspaceUsers()
-  const createMutation          = useCreateUser()
+  const inviteMutation          = useInviteUser()
 
   const [form, setForm] = useState({
-    name:       '',
     email:      '',
     role:       ROLES.EMPLOYEE,
     managerId:  '',
     department: '',
   })
-  const [errors,      setErrors]      = useState({})
-  const [tempPwd,     setTempPwd]     = useState(() => generateTempPassword())
-  const [showPwd,     setShowPwd]     = useState(false)
-  const [copied,      setCopied]      = useState(false)
-  const [createdUser, setCreatedUser] = useState(null)  // success state
+  const [errors,  setErrors]  = useState({})
+  const [copied,  setCopied]  = useState('')
+  const [invited, setInvited] = useState(null)   // success state
 
   const field = (key) => (e) => {
     setForm((f) => ({ ...f, [key]: e.target.value }))
     setErrors((err) => { const n = { ...err }; delete n[key]; return n })
   }
 
-  const handleCopy = () => {
-    navigator.clipboard?.writeText(tempPwd).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+  // `which` distinguishes the two copy buttons so the tick appears on the one
+  // that was actually pressed. A shared boolean ticks both.
+  const handleCopy = (text, which) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(which)
+      setTimeout(() => setCopied(''), 2000)
     })
   }
-
-  const handleRegenerate = () => setTempPwd(generateTempPassword())
 
   const handleSubmit = async () => {
     const errs = validate(form)
     if (Object.keys(errs).length) { setErrors(errs); return }
 
     try {
-      const result = await createMutation.mutateAsync({
-        name:        form.name.trim(),
-        email:       form.email.trim().toLowerCase(),
-        tempPassword: tempPwd,
-        role:        form.role,
-        managerId:   form.managerId || null,
-        department:  form.department.trim(),
+      const result = await inviteMutation.mutateAsync({
+        email:      form.email.trim().toLowerCase(),
+        role:       form.role,
+        managerId:  form.managerId || null,
+        department: form.department.trim(),
       })
-      setCreatedUser(result)
+      setInvited(result)
     } catch (err) {
-      setErrors({ submit: err.message ?? 'Failed to create user. Please try again.' })
+      setErrors({ submit: err.message ?? 'Failed to send the invitation. Please try again.' })
     }
   }
 
   // ── Success screen ────────────────────────────────────────────────────────
-  if (createdUser) {
+  // The admin sends the link themselves. No email is dispatched from here —
+  // system email is step 18 and belongs on a transactional provider, not on
+  // whichever mailbox this admin happens to have connected.
+  if (invited) {
+    const link = buildInviteLink(invited.email)
+
     return (
-      <ModalShell onClose={onClose} title="User created">
+      <ModalShell onClose={onClose} title="Invitation created">
         <div className="p-6 space-y-5">
-          {/* Avatar + name */}
-          <div className="flex flex-col items-center gap-3 py-4">
-            <Avatar name={createdUser.name} size="xl" />
+          <div className="flex flex-col items-center gap-3 py-2">
+            <div className="w-14 h-14 bg-teal-50 rounded-2xl flex items-center justify-center ring-1 ring-teal-200">
+              <Mail size={22} className="text-teal-600" />
+            </div>
             <div className="text-center">
-              <p className="font-display font-bold text-gray-900 text-lg">{createdUser.name}</p>
-              <p className="text-sm text-gray-500">{createdUser.email}</p>
+              <p className="font-display font-bold text-gray-900 text-lg">{invited.email}</p>
               <span className="inline-block mt-1 px-3 py-0.5 bg-teal-50 text-teal-700 text-xs font-semibold rounded-full">
-                {createdUser.role}
+                {invited.role}
               </span>
             </div>
           </div>
 
-          {/* Temp password notice */}
           <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 space-y-3">
             <div className="flex items-start gap-2">
               <ShieldCheck size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-semibold text-amber-800">Share the temporary password</p>
+                <p className="text-sm font-semibold text-amber-800">Send them this link</p>
                 <p className="text-xs text-amber-700 mt-0.5">
-                  The user will need this to sign in for the first time.
-                  Ask them to change it immediately via Settings.
+                  They sign up with this email address and choose their own password.
+                  Signing up with a different address will not join them to the team.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 bg-white rounded-lg border border-amber-200 px-3 py-2">
-              <code className="flex-1 text-sm font-mono text-gray-800 select-all">
-                {showPwd ? tempPwd : '•'.repeat(tempPwd.length)}
-              </code>
+              <Link2 size={13} className="text-gray-400 flex-shrink-0" />
+              <code className="flex-1 text-xs font-mono text-gray-800 truncate select-all">{link}</code>
               <button
-                onClick={() => setShowPwd((v) => !v)}
-                className="text-gray-400 hover:text-gray-600 p-1"
-                title={showPwd ? 'Hide' : 'Show'}
-              >
-                {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-              <button
-                onClick={handleCopy}
+                onClick={() => handleCopy(link, 'link')}
                 className="text-gray-400 hover:text-teal-600 p-1 transition-colors"
-                title="Copy to clipboard"
+                title="Copy link"
               >
-                {copied ? <Check size={14} className="text-teal-500" /> : <Copy size={14} />}
+                {copied === 'link' ? <Check size={14} className="text-teal-500" /> : <Copy size={14} />}
               </button>
             </div>
+
+            <button
+              onClick={() => handleCopy(
+                `You have been invited to Accord CRM.\n\n` +
+                `Sign up here using ${invited.email}:\n${link}\n\n` +
+                `You will choose your own password.`,
+                'message',
+              )}
+              className="w-full text-xs px-3 py-2 rounded-lg border border-amber-200 bg-white
+                         hover:bg-amber-50 transition-colors inline-flex items-center justify-center gap-1.5"
+            >
+              {copied === 'message'
+                ? <><Check size={12} className="text-teal-500" /> Message copied</>
+                : <><Copy size={12} /> Copy a ready-made message</>}
+            </button>
           </div>
 
-          {/* Confirmation email notice */}
           <div className="flex items-start gap-2 text-xs text-gray-500 bg-gray-50 rounded-xl p-3">
             <AlertTriangle size={13} className="flex-shrink-0 mt-0.5 text-gray-400" />
             <span>
-              If your Supabase project requires email confirmation, the user must click
-              the verification link before signing in.
+              The invitation expires in 14 days, and they will not appear in the user
+              list until they have signed up.
             </span>
           </div>
 
-          <button onClick={onClose} className="btn-primary w-full">
-            Done
-          </button>
+          <button onClick={onClose} className="btn-primary w-full">Done</button>
         </div>
       </ModalShell>
     )
@@ -191,7 +196,7 @@ export function UserCreateModal({ onClose }) {
   const eligibleManagers = allUsers.filter((u) => u.isActive)
 
   return (
-    <ModalShell onClose={onClose} title="Add user">
+    <ModalShell onClose={onClose} title="Invite someone">
       <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
         {/* Submit error */}
@@ -202,18 +207,8 @@ export function UserCreateModal({ onClose }) {
           </div>
         )}
 
-        {/* Full name */}
-        <Field label="Full name" error={errors.name} required>
-          <input
-            className={`input-base ${errors.name ? 'border-red-300 ring-1 ring-red-200' : ''}`}
-            placeholder="e.g. Farhan Hossain"
-            value={form.name}
-            onChange={field('name')}
-            autoFocus
-          />
-        </Field>
-
-        {/* Email */}
+        {/* Email — this IS the invitation. The trigger matches on the address
+            they sign up with, so a typo here means they join nothing. */}
         <Field label="Work email" error={errors.email} required>
           <input
             type="email"
@@ -222,7 +217,12 @@ export function UserCreateModal({ onClose }) {
             value={form.email}
             onChange={field('email')}
             autoComplete="off"
+            autoFocus
           />
+          <p className="text-[11px] text-gray-400 mt-1">
+            They must sign up with this exact address. Their name is whatever they
+            enter at signup.
+          </p>
         </Field>
 
         {/* Role */}
@@ -287,53 +287,21 @@ export function UserCreateModal({ onClose }) {
           </datalist>
         </Field>
 
-        {/* Temporary password */}
-        <Field label="Temporary password">
-          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
-            <code className="flex-1 text-sm font-mono text-gray-700 select-all">
-              {showPwd ? tempPwd : '•'.repeat(tempPwd.length)}
-            </code>
-            <button
-              onClick={() => setShowPwd((v) => !v)}
-              className="text-gray-400 hover:text-gray-600 p-1"
-              title={showPwd ? 'Hide' : 'Show'}
-            >
-              {showPwd ? <EyeOff size={13} /> : <Eye size={13} />}
-            </button>
-            <button
-              onClick={handleCopy}
-              className="text-gray-400 hover:text-teal-600 p-1 transition-colors"
-              title="Copy"
-            >
-              {copied ? <Check size={13} className="text-teal-500" /> : <Copy size={13} />}
-            </button>
-            <button
-              onClick={handleRegenerate}
-              className="text-gray-400 hover:text-blue-600 p-1 transition-colors"
-              title="Regenerate"
-            >
-              <RefreshCw size={13} />
-            </button>
-          </div>
-          <p className="text-[11px] text-gray-400 mt-1">
-            Share this with the user. They should change it after first sign-in.
-          </p>
-        </Field>
       </div>
 
       {/* Footer */}
       <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
-        <button onClick={onClose} className="btn-secondary" disabled={createMutation.isPending}>
+        <button onClick={onClose} className="btn-secondary" disabled={inviteMutation.isPending}>
           Cancel
         </button>
         <button
           onClick={handleSubmit}
-          disabled={createMutation.isPending}
+          disabled={inviteMutation.isPending}
           className="btn-primary disabled:opacity-60 min-w-[120px]"
         >
-          {createMutation.isPending
-            ? <><Spinner size="sm" color="white" /> Creating…</>
-            : <><UserPlus size={14} /> Create user</>
+          {inviteMutation.isPending
+            ? <><Spinner size="sm" color="white" /> Inviting…</>
+            : <><UserPlus size={14} /> Create invitation</>
           }
         </button>
       </div>
