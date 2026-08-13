@@ -2,6 +2,7 @@
 // Data-access layer. Replace these async functions with Supabase calls;
 // useMeetings.js hooks require zero changes because they call only these functions.
 import { TEAM_MEMBER_NAMES as _MTG_MEMBER_NAMES } from './users.js'
+import { parseLocalDate } from './dates.js'
 
 let _meetings = [
   {
@@ -347,9 +348,20 @@ export function formatMeetingDateTime(date, time) {
 }
 
 /** Days from today to meeting date (negative = past) */
+//
+// step048. Same read-side bug step047 fixed in daysUntilDue, in the twin
+// helper: `new Date(date)` parsed a bare YYYY-MM-DD as UTC midnight while
+// `today` was built local, so the subtraction mixed two different midnights.
+// Math.round hid it inside ±12h, which is why it looked right in Dhaka (UTC+6)
+// and would have been a whole day out further east.
+//
+// formatMeetingDateTime above is NOT affected and was left alone: it builds
+// `${date}T${time}`, and a datetime string without a Z is parsed as local by
+// the spec. Only the bare date form has the trap.
 export function daysFromToday(date) {
-  if (!date) return null
-  const today = new Date(new Date().toDateString())
-  const d     = new Date(date)
+  const d = parseLocalDate(date)
+  if (!d) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
   return Math.round((d - today) / 86400000)
 }

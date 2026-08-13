@@ -19,6 +19,7 @@ import { LeadRecordPage } from './pages/LeadRecordPage.jsx'
 import { ContactsPage }  from './pages/ContactsPage.jsx'
 import { ContactRecordPage } from './pages/ContactRecordPage.jsx'
 import { MeetingsPage }  from './pages/MeetingsPage.jsx'
+import { MeetingRecordPage } from './pages/MeetingRecordPage.jsx'
 import { TasksPage }     from './pages/TasksPage.jsx'
 import { TaskRecordPage } from './pages/TaskRecordPage.jsx'
 import { OpportunitiesPage } from './pages/OpportunitiesPage.jsx'
@@ -78,6 +79,9 @@ export default function App() {
               the way react-router already ranks it. */}
           <Route path="/contacts/:id" element={<ContactRecordPage />} />
           <Route path="/meetings"  element={<MeetingsPage />} />
+          {/* step048 — the fifth and last record route. Same ordering rule
+              as the four above. */}
+          <Route path="/meetings/:id" element={<MeetingRecordPage />} />
           <Route path="/tasks"     element={<TasksPage />} />
           {/* step047 — the fourth record route. Same ordering rule as the
               three above: static segment declared first so the file reads

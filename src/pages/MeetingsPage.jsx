@@ -1,3 +1,12 @@
+// ─── MeetingsPage ─────────────────────────────────────────────────────────────
+//
+// step048. The page heading block is gone, matching every other module.
+//
+// It was a 36px amber icon tile, an <h1> reading "Meetings" and a subtitle
+// reading "Schedule and track all client meetings" — on a page reached by
+// clicking "Meetings" in the sidebar, under a top bar already reading the same
+// word. Spacing drops to space-y-2 to match.
+
 import React from 'react'
 import { Calendar, RefreshCw } from 'lucide-react'
 import { useMeetings }           from '../hooks/useMeetings.js'
@@ -43,30 +52,16 @@ export function MeetingsPage() {
 
   return (
     <>
-      <div className="space-y-4 max-w-[1600px]">
-        {/* Page heading */}
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-amber-50 rounded-xl flex items-center justify-center ring-1 ring-amber-200">
-            <Calendar size={18} className="text-amber-600" />
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-gray-900 text-xl leading-tight">Meetings</h1>
-            <p className="text-xs text-gray-500">Schedule and track all client meetings</p>
-          </div>
-        </div>
-
-        {/* Status summary */}
+      <div className="space-y-2 max-w-[1600px]">
         <MeetingsSummaryBar meetings={allMeetings} />
-
-        {/* Toolbar */}
         <MeetingsToolbar total={allMeetings.length} filtered={filtered.length} />
-
-        {/* Table */}
         <MeetingsTable meetings={filtered} isLoading={isLoading} />
       </div>
 
-      {/* Detail panel */}
-      <MeetingDetailPanel />
+      {/* The panel's record arrows walk THIS array — the rows actually on
+          screen. See the note in MeetingDetailPanel about why it is passed in
+          rather than fetched there. */}
+      <MeetingDetailPanel records={filtered} />
 
       {/* Add / Edit meeting modal */}
       <MeetingFormModal />
