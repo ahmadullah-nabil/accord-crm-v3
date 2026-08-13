@@ -1,139 +1,99 @@
+// ─── NotificationsToolbar ─────────────────────────────────────────────────────
+//
+// step046. The two-row card becomes one ViewHeader row.
+//
+// EVERY FUNCTIONAL DETAIL IS CARRIED OVER: the search field and its clear
+// button, the read-state toggle, Mark all read (still shown only when there is
+// something unread), Clear read and its confirm, and clearFilters.
+//
+// WHAT MOVED WHERE, AND WHY THE DISTINCTION IS REAL
+// ─────────────────────────────────────────────────
+// `leading` — the All / Unread / Read toggle. It changes WHICH ROWS are the
+// subject and nothing about them, which is what the left slot is for.
+//
+// `actions` — Mark all read and Clear read. These WRITE. Clear read deletes
+// rows. They belong on the right with the other things that do something to the
+// data, as far from the frame toggles as the row allows.
+//
+// The category select is gone from here because the chip row above IS the
+// category filter now. Two controls for one filter is one more than can be
+// right, and the pair could disagree.
+
 import React from 'react'
-import { Search, SlidersHorizontal, X, CheckCheck, Trash2 } from 'lucide-react'
-import { useNotificationsStore }           from '../../stores/notificationsStore.js'
-import { useMarkAllAsRead, useClearAllRead } from '../../hooks/useNotifications.js'
-import { NOTIFICATION_CATEGORIES }          from '../../lib/notificationsData.js'
+import { CheckCheck, Trash2 } from 'lucide-react'
+import { useNotificationsStore }               from '../../stores/notificationsStore.js'
+import { useMarkAllAsRead, useClearAllRead }   from '../../hooks/useNotifications.js'
+import { ViewHeader }                          from '../ui/ViewHeader.jsx'
+import { Segmented, SegButton }                from '../ui/Segmented.jsx'
 
 const READ_FILTERS = ['All', 'Unread', 'Read']
 
-export function NotificationsToolbar({ total, unreadCount }) {
+export function NotificationsToolbar({ total, filtered, unreadCount }) {
   const {
     searchQuery, setSearchQuery,
-    categoryFilter, setCategoryFilter,
+    categoryFilter,
     readFilter, setReadFilter,
     clearFilters,
   } = useNotificationsStore()
 
-  const markAllMutation  = useMarkAllAsRead()
+  const markAllMutation   = useMarkAllAsRead()
   const clearReadMutation = useClearAllRead()
 
-  const hasFilters = searchQuery || categoryFilter !== 'All' || readFilter !== 'All'
+  const hasFilters = Boolean(searchQuery) || categoryFilter !== 'All' || readFilter !== 'All'
 
   return (
-    <div className="card px-4 py-3 space-y-3">
-      {/* Row 1: search + bulk actions */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search
-            size={15}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-          />
-          <input
-            type="text"
-            placeholder="Search notifications…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-base pl-9 py-2 text-sm"
-          />
-          {searchQuery && (
+    <ViewHeader
+      title="Notifications"
+      count={filtered}
+      total={total}
+      leading={
+        <Segmented>
+          {READ_FILTERS.map((f) => (
+            // A plain read of readFilter — the old pill's highlight also
+            // depended on categoryFilter, so it could show OFF while on.
+            <SegButton key={f} active={readFilter === f} onClick={() => setReadFilter(f)}>
+              {f}
+            </SegButton>
+          ))}
+        </Segmented>
+      }
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: 'Search notifications',
+      }}
+      hasFilters={hasFilters}
+      onClearFilters={clearFilters}
+      actions={
+        <>
+          {unreadCount > 0 && (
             <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              onClick={() => markAllMutation.mutate()}
+              disabled={markAllMutation.isPending}
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium
+                         text-gray-600 hover:text-gray-900 hover:bg-gray-100
+                         transition-colors duration-120 disabled:opacity-40"
             >
-              <X size={13} />
+              <CheckCheck size={12} /> Mark all read
             </button>
           )}
-        </div>
-
-        {total !== undefined && (
-          <span className="text-xs text-gray-400 flex-shrink-0 hidden sm:inline">
-            {total} total · {unreadCount} unread
-          </span>
-        )}
-
-        {/* Mark all as read */}
-        {unreadCount > 0 && (
           <button
-            onClick={() => markAllMutation.mutate()}
-            disabled={markAllMutation.isPending}
-            className="btn-secondary py-2 text-xs flex-shrink-0 gap-1.5"
+            onClick={() => {
+              if (window.confirm('Remove all read notifications?')) {
+                clearReadMutation.mutate()
+              }
+            }}
+            disabled={clearReadMutation.isPending}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium
+                       text-gray-500 hover:text-red-600 hover:bg-red-50
+                       transition-colors duration-120 disabled:opacity-40"
           >
-            <CheckCheck size={13} />
-            Mark all read
+            <Trash2 size={12} /> Clear read
           </button>
-        )}
-
-        {/* Clear all read */}
-        <button
-          onClick={() => {
-            if (window.confirm('Remove all read notifications?')) {
-              clearReadMutation.mutate()
-            }
-          }}
-          disabled={clearReadMutation.isPending}
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-500 font-medium transition-colors px-2 py-1.5 rounded-lg hover:bg-red-50 flex-shrink-0"
-        >
-          <Trash2 size={12} />
-          Clear read
-        </button>
-      </div>
-
-      {/* Row 2: filters */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <SlidersHorizontal size={13} className="text-gray-400 flex-shrink-0" />
-
-        {/* Read state toggle pills */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-          {READ_FILTERS.map((f) => (
-            <button
-              key={f}
-              onClick={() => setReadFilter(f)}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-150
-                ${readFilter === f
-                  ? 'bg-white text-gray-900 shadow-card'
-                  : 'text-gray-500 hover:text-gray-700'
-                }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-
-        {/* Category filter */}
-        <FilterSelect
-          label="Category"
-          value={categoryFilter}
-          onChange={setCategoryFilter}
-          options={NOTIFICATION_CATEGORIES}
-        />
-
-        {hasFilters && (
-          <button
-            onClick={clearFilters}
-            className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium ml-1"
-          >
-            <X size={11} /> Clear
-          </button>
-        )}
-      </div>
-    </div>
+        </>
+      }
+    />
   )
 }
 
-function FilterSelect({ label, value, onChange, options }) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={`text-xs font-medium rounded-lg px-2.5 py-1.5 border outline-none cursor-pointer
-        transition-all duration-150
-        ${value !== 'All'
-          ? 'bg-teal-50 border-teal-300 text-teal-700'
-          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-        }`}
-    >
-      <option value="All">{label}: All</option>
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
-    </select>
-  )
-}
+export default NotificationsToolbar
