@@ -30,18 +30,42 @@
 //
 // The invited person does NOT appear in the user list until they accept.
 // Showing them early would mean a row that cannot be assigned work.
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │ step062 — ONTO Modal / Stepper / FormKit, LIKE THE OTHER FOUR            │
+// ├─────────────────────────────────────────────────────────────────────────┤
+// │ This was the last create dialog still carrying a private `ModalShell`    │
+// │ and a private `Field`. Three steps — Person → Role → Access — on the     │
+// │ same `Stepper` as Lead, Contact, Deal and Task.                          │
+// │                                                                          │
+// │ THE ROLE STEP IS WHY THE SPLIT IS WORTH IT HERE, and it is not just      │
+// │ consistency. Five stacked radio cards with a description each were the   │
+// │ tallest thing in the dialog and sat between the email field and the two  │
+// │ fields below them, so on a laptop you scrolled past the role choice to   │
+// │ reach Department and scrolled back to check what you had picked. On its  │
+// │ own step the five options fit without scrolling and the choice is the    │
+// │ only thing on screen.                                                    │
+// │                                                                          │
+// │ The success screen keeps its own shape. It is not a form step — the      │
+// │ invitation already exists by then, there is nothing to go Back to, and   │
+// │ the stepper is hidden so it cannot suggest otherwise. Its ONE action is  │
+// │ Done.                                                                    │
+// │                                                                          │
+// │ THE SUBMIT-MID-CLICK TRAP FROM step061 APPLIES HERE TOO: the primary     │
+// │ button never changes element type between steps, only its label, and     │
+// │ every submit routes through `onFormSubmit`. Do not rewrite this as a     │
+// │ ternary that swaps <button type="button"> for <button type="submit">.    │
+// └─────────────────────────────────────────────────────────────────────────┘
 
-import React, { useState, useCallback } from 'react'
-import {
-  X, UserPlus, Copy, Check, Mail,
-  ShieldCheck, AlertTriangle, Link2,
-} from 'lucide-react'
+import React, { useState } from 'react'
+import { Copy, Check, Mail, ShieldCheck, AlertTriangle, Link2 } from 'lucide-react'
 import { useInviteUser }     from '../../hooks/useInvitations.js'
 import { buildInviteLink }   from '../../services/invitationService.js'
 import { useWorkspaceUsers } from '../../hooks/useUserManagement.js'
 import { ROLES }             from '../../lib/users.js'
-import { Avatar }            from '../ui/Avatar.jsx'
-import { Spinner }           from '../ui/Spinner.jsx'
+import { Modal, ModalBody }  from '../ui/Modal.jsx'
+import { Stepper, StepHeading } from '../ui/Stepper.jsx'
+import { FormSection, FormField, FormError, ReviewRow } from '../ui/FormKit.jsx'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -50,12 +74,24 @@ const ROLE_OPTIONS = [
   { value: ROLES.AGM,       label: 'AGM',       desc: 'Department-wide visibility and reporting access' },
   { value: ROLES.MANAGER,   label: 'Manager',   desc: 'Team visibility and task management'             },
   { value: ROLES.EXECUTIVE, label: 'Executive', desc: 'Own records and assigned work'                   },
-  { value: ROLES.EMPLOYEE,  label: 'Employee',  desc: 'Basic CRM access'                               },
+  { value: ROLES.EMPLOYEE,  label: 'Employee',  desc: 'Basic CRM access'                                },
 ]
 
 const DEPT_SUGGESTIONS = [
   'Sales', 'Business Development', 'Account Management',
   'Marketing', 'Operations', 'Finance', 'HR', 'Technology',
+]
+
+const STEPS = [
+  { id: 'person', label: 'Person' },
+  { id: 'role',   label: 'Role'   },
+  { id: 'access', label: 'Access' },
+]
+
+const STEP_FIELDS = [
+  ['email'],
+  ['role'],
+  [],
 ]
 
 // ── Form validation ───────────────────────────────────────────────────────────
@@ -84,6 +120,7 @@ export function UserCreateModal({ onClose }) {
   const [errors,  setErrors]  = useState({})
   const [copied,  setCopied]  = useState('')
   const [invited, setInvited] = useState(null)   // success state
+  const [step,    setStep]    = useState(0)
 
   const field = (key) => (e) => {
     setForm((f) => ({ ...f, [key]: e.target.value }))
@@ -99,9 +136,30 @@ export function UserCreateModal({ onClose }) {
     })
   }
 
+  const errorsForStep = (i) => {
+    const all = validate(form)
+    return Object.fromEntries(
+      Object.entries(all).filter(([k]) => STEP_FIELDS[i].includes(k))
+    )
+  }
+
+  const next = () => {
+    const errs = errorsForStep(step)
+    if (Object.keys(errs).length) { setErrors(errs); return }
+    setErrors({})
+    setStep((s) => Math.min(s + 1, STEPS.length - 1))
+  }
+
+  const back = () => setStep((s) => Math.max(s - 1, 0))
+
   const handleSubmit = async () => {
     const errs = validate(form)
-    if (Object.keys(errs).length) { setErrors(errs); return }
+    if (Object.keys(errs).length) {
+      setErrors(errs)
+      const bad = STEP_FIELDS.findIndex((fields) => fields.some((f) => errs[f]))
+      if (bad >= 0) setStep(bad)
+      return
+    }
 
     try {
       const result = await inviteMutation.mutateAsync({
@@ -116,6 +174,18 @@ export function UserCreateModal({ onClose }) {
     }
   }
 
+  const isLast = step === STEPS.length - 1
+
+  // See the header: the element type never changes, only the label.
+  const onFormSubmit = (e) => {
+    e.preventDefault()
+    if (!isLast) { next(); return }
+    handleSubmit()
+  }
+
+  const eligibleManagers = allUsers.filter((u) => u.isActive)
+  const managerName      = eligibleManagers.find((u) => u.id === form.managerId)?.name
+
   // ── Success screen ────────────────────────────────────────────────────────
   // The admin sends the link themselves. No email is dispatched from here —
   // system email is step 18 and belongs on a transactional provider, not on
@@ -124,41 +194,47 @@ export function UserCreateModal({ onClose }) {
     const link = buildInviteLink(invited.email)
 
     return (
-      <ModalShell onClose={onClose} title="Invitation created">
-        <div className="p-6 space-y-5">
-          <div className="flex flex-col items-center gap-3 py-2">
-            <div className="w-14 h-14 bg-teal-50 rounded-2xl flex items-center justify-center ring-1 ring-teal-200">
-              <Mail size={22} className="text-teal-600" />
+      <Modal
+        open
+        onClose={onClose}
+        title="Invitation created"
+        size="md"
+        footer={<button onClick={onClose} className="btn-primary ml-auto">Done</button>}
+      >
+        <ModalBody className="space-y-4">
+          <div className="flex flex-col items-center gap-2 py-2">
+            <div className="w-11 h-11 rounded-lg border border-gray-200 flex items-center justify-center">
+              <Mail size={18} className="text-gray-500" />
             </div>
             <div className="text-center">
-              <p className="font-display font-bold text-gray-900 text-lg">{invited.email}</p>
-              <span className="inline-block mt-1 px-3 py-0.5 bg-teal-50 text-teal-700 text-xs font-semibold rounded-full">
+              <p className="font-display font-semibold text-gray-900 text-sm">{invited.email}</p>
+              <span className="inline-block mt-1 px-2 py-0.5 border border-gray-200 text-gray-600 text-[11px] rounded-md">
                 {invited.role}
               </span>
             </div>
           </div>
 
-          <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 space-y-3">
+          <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
             <div className="flex items-start gap-2">
-              <ShieldCheck size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <ShieldCheck size={14} className="text-gray-400 shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-semibold text-amber-800">Send them this link</p>
-                <p className="text-xs text-amber-700 mt-0.5">
+                <p className="text-xs font-medium text-gray-900">Send them this link</p>
+                <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
                   They sign up with this email address and choose their own password.
                   Signing up with a different address will not join them to the team.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 bg-white rounded-lg border border-amber-200 px-3 py-2">
-              <Link2 size={13} className="text-gray-400 flex-shrink-0" />
-              <code className="flex-1 text-xs font-mono text-gray-800 truncate select-all">{link}</code>
+            <div className="flex items-center gap-2 rounded-md border border-gray-200 px-2.5 py-1.5">
+              <Link2 size={12} className="text-gray-400 shrink-0" />
+              <code className="flex-1 text-[11px] font-mono text-gray-800 truncate select-all">{link}</code>
               <button
                 onClick={() => handleCopy(link, 'link')}
-                className="text-gray-400 hover:text-teal-600 p-1 transition-colors"
+                className="text-gray-400 hover:text-gray-900 p-0.5 transition-colors duration-120"
                 title="Copy link"
               >
-                {copied === 'link' ? <Check size={14} className="text-teal-500" /> : <Copy size={14} />}
+                {copied === 'link' ? <Check size={13} className="text-gray-900" /> : <Copy size={13} />}
               </button>
             </div>
 
@@ -169,187 +245,170 @@ export function UserCreateModal({ onClose }) {
                 `You will choose your own password.`,
                 'message',
               )}
-              className="w-full text-xs px-3 py-2 rounded-lg border border-amber-200 bg-white
-                         hover:bg-amber-50 transition-colors inline-flex items-center justify-center gap-1.5"
+              className="btn-secondary w-full text-xs"
             >
               {copied === 'message'
-                ? <><Check size={12} className="text-teal-500" /> Message copied</>
+                ? <><Check size={12} /> Message copied</>
                 : <><Copy size={12} /> Copy a ready-made message</>}
             </button>
           </div>
 
-          <div className="flex items-start gap-2 text-xs text-gray-500 bg-gray-50 rounded-xl p-3">
-            <AlertTriangle size={13} className="flex-shrink-0 mt-0.5 text-gray-400" />
+          <div className="flex items-start gap-2 text-[11px] text-gray-500">
+            <AlertTriangle size={12} className="shrink-0 mt-0.5 text-gray-400" />
             <span>
-              The invitation expires in 14 days, and they will not appear in the user
+              The invitation expires in 14 days, and they will not appear in the member
               list until they have signed up.
             </span>
           </div>
-
-          <button onClick={onClose} className="btn-primary w-full">Done</button>
-        </div>
-      </ModalShell>
+        </ModalBody>
+      </Modal>
     )
   }
 
-  // ── Form screen ───────────────────────────────────────────────────────────
-  const eligibleManagers = allUsers.filter((u) => u.isActive)
-
+  // ── Form ──────────────────────────────────────────────────────────────────
   return (
-    <ModalShell onClose={onClose} title="Invite someone">
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
+    <Modal
+      open
+      onClose={onClose}
+      title="Invite someone"
+      size="md"
+      toolbar={<Stepper steps={STEPS} current={step} onStepClick={setStep} />}
+      footer={
+        <>
+          {step > 0 && (
+            <button type="button" onClick={back} className="btn-secondary mr-auto"
+                    disabled={inviteMutation.isPending}>
+              Back
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className={`btn-secondary ${step === 0 ? 'mr-auto' : ''}`}
+            disabled={inviteMutation.isPending}
+          >
+            Cancel
+          </button>
+          <button type="submit" form="invite-form" className="btn-primary"
+                  disabled={inviteMutation.isPending}>
+            {!isLast
+              ? 'Continue'
+              : inviteMutation.isPending ? 'Inviting…' : 'Create invitation'}
+          </button>
+        </>
+      }
+    >
+      <form id="invite-form" onSubmit={onFormSubmit} className="flex-1 min-h-0 flex flex-col">
+        <ModalBody>
+          <FormError>{errors.submit}</FormError>
 
-        {/* Submit error */}
-        {errors.submit && (
-          <div className="flex items-start gap-2.5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
-            <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-red-700">{errors.submit}</p>
-          </div>
-        )}
+          {step === 0 && (
+            <FormSection first>
+              <StepHeading
+                title="Person"
+                description="The address they will sign up with."
+              />
 
-        {/* Email — this IS the invitation. The trigger matches on the address
-            they sign up with, so a typo here means they join nothing. */}
-        <Field label="Work email" error={errors.email} required>
-          <input
-            type="email"
-            className={`input-base ${errors.email ? 'border-red-300 ring-1 ring-red-200' : ''}`}
-            placeholder="farhan@company.com"
-            value={form.email}
-            onChange={field('email')}
-            autoComplete="off"
-            autoFocus
-          />
-          <p className="text-[11px] text-gray-400 mt-1">
-            They must sign up with this exact address. Their name is whatever they
-            enter at signup.
-          </p>
-        </Field>
-
-        {/* Role */}
-        <Field label="Role" error={errors.role} required>
-          <div className="space-y-1.5">
-            {ROLE_OPTIONS.map(({ value, label, desc }) => (
-              <label
-                key={value}
-                className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all
-                  ${form.role === value
-                    ? 'bg-teal-50 border-teal-300 ring-1 ring-teal-200'
-                    : 'bg-white border-gray-200 hover:border-gray-300'
-                  }`}
+              {/* Email — this IS the invitation. The trigger matches on the
+                  address they sign up with, so a typo here means they join
+                  nothing. */}
+              <FormField
+                label="Work email"
+                error={errors.email}
+                required
+                hint="They must sign up with this exact address. Their name is whatever they enter at signup."
               >
                 <input
-                  type="radio"
-                  name="role"
-                  value={value}
-                  checked={form.role === value}
-                  onChange={field('role')}
-                  className="mt-0.5 accent-teal-500 flex-shrink-0"
+                  type="email"
+                  className="input-base"
+                  placeholder="farhan@company.com"
+                  value={form.email}
+                  onChange={field('email')}
+                  autoComplete="off"
+                  autoFocus
                 />
-                <div className="min-w-0">
-                  <p className={`text-sm font-semibold leading-tight
-                    ${form.role === value ? 'text-teal-800' : 'text-gray-800'}`}>
-                    {label}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
-                </div>
-              </label>
-            ))}
-          </div>
-        </Field>
+              </FormField>
+            </FormSection>
+          )}
 
-        {/* Manager */}
-        <Field label="Reports to (Manager)">
-          <select
-            className="input-base"
-            value={form.managerId}
-            onChange={field('managerId')}
-          >
-            <option value="">— No manager —</option>
-            {eligibleManagers.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name} ({u.role})
-              </option>
-            ))}
-          </select>
-        </Field>
+          {step === 1 && (
+            <FormSection first>
+              <StepHeading
+                title="Role"
+                description="What they can see and do. Enforced by RLS, not by this list."
+              />
 
-        {/* Department */}
-        <Field label="Department">
-          <input
-            className="input-base"
-            list="dept-suggestions-create"
-            placeholder="e.g. Sales"
-            value={form.department}
-            onChange={field('department')}
-          />
-          <datalist id="dept-suggestions-create">
-            {DEPT_SUGGESTIONS.map((d) => <option key={d} value={d} />)}
-          </datalist>
-        </Field>
+              <div className="space-y-1.5">
+                {ROLE_OPTIONS.map(({ value, label, desc }) => (
+                  <label
+                    key={value}
+                    className={`flex items-start gap-2.5 p-2.5 rounded-md border cursor-pointer
+                                transition-colors duration-120
+                      ${form.role === value
+                        ? 'border-gray-900 bg-gray-50'
+                        : 'border-gray-200 hover:border-gray-300'}`}
+                  >
+                    <input
+                      type="radio"
+                      name="role"
+                      value={value}
+                      checked={form.role === value}
+                      onChange={field('role')}
+                      className="mt-0.5 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-gray-900 leading-tight">{label}</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">{desc}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
 
-      </div>
+              {errors.role && <p className="text-[11px] text-red-500 mt-1.5">{errors.role}</p>}
+            </FormSection>
+          )}
 
-      {/* Footer */}
-      <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 flex-shrink-0">
-        <button onClick={onClose} className="btn-secondary" disabled={inviteMutation.isPending}>
-          Cancel
-        </button>
-        <button
-          onClick={handleSubmit}
-          disabled={inviteMutation.isPending}
-          className="btn-primary disabled:opacity-60 min-w-[120px]"
-        >
-          {inviteMutation.isPending
-            ? <><Spinner size="sm" color="white" /> Inviting…</>
-            : <><UserPlus size={14} /> Create invitation</>
-          }
-        </button>
-      </div>
-    </ModalShell>
+          {step === 2 && (
+            <FormSection first>
+              <StepHeading
+                title="Access"
+                description="Optional. Both can be changed later from Edit user."
+              />
+
+              <FormField label="Reports to (manager)">
+                <select className="input-base" value={form.managerId} onChange={field('managerId')}>
+                  <option value="">— No manager —</option>
+                  {eligibleManagers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                  ))}
+                </select>
+              </FormField>
+
+              <FormField label="Department">
+                <input
+                  className="input-base"
+                  list="dept-suggestions-create"
+                  placeholder="e.g. Sales"
+                  value={form.department}
+                  onChange={field('department')}
+                />
+              </FormField>
+              <datalist id="dept-suggestions-create">
+                {DEPT_SUGGESTIONS.map((d) => <option key={d} value={d} />)}
+              </datalist>
+
+              <div className="rounded-md border border-gray-200 px-3 py-1">
+                <ReviewRow label="Work email" value={form.email} />
+                <ReviewRow label="Role"       value={form.role} />
+                <ReviewRow label="Reports to" value={managerName} />
+                <ReviewRow label="Department" value={form.department} />
+              </div>
+            </FormSection>
+          )}
+        </ModalBody>
+      </form>
+    </Modal>
   )
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function ModalShell({ onClose, title, children }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-teal-50 rounded-lg flex items-center justify-center ring-1 ring-teal-200">
-              <UserPlus size={14} className="text-teal-600" />
-            </div>
-            <h2 className="font-display font-bold text-gray-900">{title}</h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 transition-colors"
-          >
-            <X size={15} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function Field({ label, error, required = false, children }) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-        {label}
-        {required && <span className="text-red-400 ml-0.5">*</span>}
-      </label>
-      {children}
-      {error && (
-        <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
-          <AlertTriangle size={10} /> {error}
-        </p>
-      )}
-    </div>
-  )
-}
+export default UserCreateModal

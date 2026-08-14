@@ -103,17 +103,33 @@ export function Sidebar() {
           </button>
         ) : (
           <>
-            {/* Both assets ship; CSS picks one. See the note at the top. */}
-            <img
-              src="/accord-logo-black.svg"
-              alt="Accord Technologies Limited"
-              className="h-[22px] w-auto dark:hidden"
-            />
-            <img
-              src="/accord-logo-white.svg"
-              alt="Accord Technologies Limited"
-              className="h-[22px] w-auto hidden dark:block"
-            />
+            {/* step062 — the wordmark is a link home.
+                Every product in this class does it and the CRM was the one
+                place the habit failed silently: you click, nothing happens,
+                and you assume the click missed. It goes to /dashboard, the
+                real route, not "/" — the root redirects, and a link that
+                depends on a redirect breaks the day the redirect changes.
+
+                Both assets still ship and CSS still picks one; the button
+                only wraps them. See the note at the top of this file for why
+                `dark:hidden` is the one permitted dark variant here. */}
+            <button
+              onClick={() => navigate('/dashboard')}
+              aria-label="Go to dashboard"
+              className="flex items-center rounded-md p-0.5 -m-0.5
+                         hover:bg-gray-200 transition-colors duration-120"
+            >
+              <img
+                src="/accord-logo-black.svg"
+                alt="Accord Technologies Limited"
+                className="h-[22px] w-auto dark:hidden"
+              />
+              <img
+                src="/accord-logo-white.svg"
+                alt="Accord Technologies Limited"
+                className="h-[22px] w-auto hidden dark:block"
+              />
+            </button>
             <button
               onClick={toggleSidebar}
               className="ml-auto p-1.5 rounded-md text-gray-400 hover:text-gray-900 hover:bg-gray-200 transition-colors duration-120"

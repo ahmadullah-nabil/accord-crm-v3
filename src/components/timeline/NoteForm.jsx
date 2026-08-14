@@ -1,9 +1,26 @@
+// ─── NoteForm ─────────────────────────────────────────────────────────────────
+//
+// step062. The tinted-card era ends here. This was a yellow panel, the
+// follow-up form was purple and the meeting note form was blue — three colours
+// for three things that are all "type something into the timeline".
+//
+// The colour was not encoding anything. Nothing else in the app tells you a
+// note is yellow; the timeline entry it produces is not yellow either. It was
+// three separate authors each picking a highlight, and it is the last thing in
+// the record panel that still looks like the pre-step033 app.
+//
+// Flat now: white, one hairline, the shared `input-base` and `btn-primary`.
+// Same three files, one language.
+//
+// Enter-to-save (Ctrl/Cmd+Enter) is new — a note is one field and reaching for
+// the mouse for a two-word note is the whole cost of writing it.
+
 import React, { useState } from 'react'
-import { X, StickyNote } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useAddNote } from '../../hooks/useTimeline.js'
 
 export function NoteForm({ entityType, entityId, entityLabel, onClose }) {
-  const [body, setBody]           = useState('')
+  const [body, setBody]             = useState('')
   const [visibility, setVisibility] = useState('internal')
   const mutation = useAddNote(entityType, entityId, entityLabel)
 
@@ -11,46 +28,57 @@ export function NoteForm({ entityType, entityId, entityLabel, onClose }) {
     if (!body.trim()) return
     mutation.mutate(
       { body: body.trim(), visibility },
-      {
-        onSuccess: () => {
-          setBody('')
-          onClose()
-        },
-      }
+      { onSuccess: () => { setBody(''); onClose() } },
     )
   }
 
+  const onKeyDown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); handleSubmit() }
+  }
+
   return (
-    <div className="mb-3 bg-yellow-50 border border-yellow-100 rounded-xl p-3">
+    <div className="mb-3 bg-white border border-gray-200 rounded-lg p-3">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-semibold text-yellow-700 flex items-center gap-1">
-          <StickyNote size={10} /> Add note
-        </span>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-          <X size={12} />
+        <span className="text-[10px] uppercase tracking-wide text-gray-400">Add note</span>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="p-0.5 rounded text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors duration-120"
+        >
+          <X size={13} />
         </button>
       </div>
+
       <textarea
-        className="w-full text-xs rounded-lg border border-yellow-200 bg-white p-2.5 resize-none focus:outline-none focus:ring-1 focus:ring-yellow-300 placeholder-gray-400"
+        className="input-base resize-none text-xs"
         rows={3}
         placeholder="Add an internal note…"
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        onKeyDown={onKeyDown}
         autoFocus
       />
-      <div className="flex items-center justify-between mt-2">
+
+      {mutation.isError && (
+        <p className="text-[11px] text-red-500 mt-1.5">
+          {mutation.error?.message || 'Could not save the note.'}
+        </p>
+      )}
+
+      <div className="flex items-center gap-2 mt-2">
         <select
           value={visibility}
           onChange={(e) => setVisibility(e.target.value)}
-          className="text-[10px] text-gray-500 bg-transparent border-none outline-none cursor-pointer"
+          className="input-base text-xs w-auto py-1"
         >
           <option value="internal">Internal only</option>
           <option value="shared">Shared</option>
         </select>
+
         <button
           onClick={handleSubmit}
           disabled={!body.trim() || mutation.isPending}
-          className="text-xs font-semibold px-3 py-1.5 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors disabled:opacity-50"
+          className="btn-primary text-xs ml-auto"
         >
           {mutation.isPending ? 'Saving…' : 'Save note'}
         </button>
@@ -58,3 +86,5 @@ export function NoteForm({ entityType, entityId, entityLabel, onClose }) {
     </div>
   )
 }
+
+export default NoteForm
