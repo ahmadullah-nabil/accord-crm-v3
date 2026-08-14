@@ -100,6 +100,84 @@
   --table-cell-py: 0.5rem;
   --table-cell-px: 0.75rem;
 
+  /* ── Semantic ramps (step063) ──────────────────────────────────────────
+     Tailwind's own red / amber / emerald / blue / purple / orange values,
+     lifted into variables so html.dark can invert them the way it already
+     inverts `gray`. Light mode is byte-for-byte what these classes rendered
+     before, so nothing changes here — the whole point is the dark block. */
+  /* red */
+  --c-red-50: 254 242 242;
+  --c-red-100: 254 226 226;
+  --c-red-200: 254 202 202;
+  --c-red-300: 252 165 165;
+  --c-red-400: 248 113 113;
+  --c-red-500: 239 68 68;
+  --c-red-600: 220 38 38;
+  --c-red-700: 185 28 28;
+  --c-red-800: 153 27 27;
+  --c-red-900: 127 29 29;
+  --c-red-950: 69 10 10;
+  /* amber */
+  --c-amber-50: 255 251 235;
+  --c-amber-100: 254 243 199;
+  --c-amber-200: 253 230 138;
+  --c-amber-300: 252 211 77;
+  --c-amber-400: 251 191 36;
+  --c-amber-500: 245 158 11;
+  --c-amber-600: 217 119 6;
+  --c-amber-700: 180 83 9;
+  --c-amber-800: 146 64 14;
+  --c-amber-900: 120 53 15;
+  --c-amber-950: 69 26 3;
+  /* emerald */
+  --c-emerald-50: 236 253 245;
+  --c-emerald-100: 209 250 229;
+  --c-emerald-200: 167 243 208;
+  --c-emerald-300: 110 231 183;
+  --c-emerald-400: 52 211 153;
+  --c-emerald-500: 16 185 129;
+  --c-emerald-600: 5 150 105;
+  --c-emerald-700: 4 120 87;
+  --c-emerald-800: 6 95 70;
+  --c-emerald-900: 6 78 59;
+  --c-emerald-950: 2 44 34;
+  /* blue */
+  --c-blue-50: 239 246 255;
+  --c-blue-100: 219 234 254;
+  --c-blue-200: 191 219 254;
+  --c-blue-300: 147 197 253;
+  --c-blue-400: 96 165 250;
+  --c-blue-500: 59 130 246;
+  --c-blue-600: 37 99 235;
+  --c-blue-700: 29 78 216;
+  --c-blue-800: 30 64 175;
+  --c-blue-900: 30 58 138;
+  --c-blue-950: 23 37 84;
+  /* purple */
+  --c-purple-50: 250 245 255;
+  --c-purple-100: 243 232 255;
+  --c-purple-200: 233 213 255;
+  --c-purple-300: 216 180 254;
+  --c-purple-400: 192 132 252;
+  --c-purple-500: 168 85 247;
+  --c-purple-600: 147 51 234;
+  --c-purple-700: 126 34 206;
+  --c-purple-800: 107 33 168;
+  --c-purple-900: 88 28 135;
+  --c-purple-950: 59 7 100;
+  /* orange */
+  --c-orange-50: 255 247 237;
+  --c-orange-100: 255 237 213;
+  --c-orange-200: 254 215 170;
+  --c-orange-300: 253 186 116;
+  --c-orange-400: 251 146 60;
+  --c-orange-500: 249 115 22;
+  --c-orange-600: 234 88 12;
+  --c-orange-700: 194 65 12;
+  --c-orange-800: 154 52 18;
+  --c-orange-900: 124 45 18;
+  --c-orange-950: 67 20 7;
+
   /* ── Focus ring ────────────────────────────────────────────────────────
      One definition, used by the global :focus-visible rule below. */
   --focus-ring: rgb(var(--c-accent-500) / 0.9);
@@ -113,10 +191,17 @@
 
    Retuned in step033 to match the light side: neutral, not blue. */
 html.dark {
-  --c-white:    26 26 25;      /* card / input / dropdown surface */
-  --c-gray-50:  18 18 17;      /* page background, subtle fills   */
-  --c-gray-100: 38 38 36;      /* hairline dividers               */
-  --c-gray-200: 51 51 48;      /* borders                         */
+  /* step063 — surface separation retune.
+     The card surface used to sit 8 RGB steps above the page (26 vs 18) and
+     the border 13 above that. On a real screen at real brightness that is
+     one flat sheet: cards, inputs and dropdowns had no edge, which is most
+     of what "the dark mode is not polished" means. The page goes darker,
+     the card goes lighter, and the border gains real contrast. The ordering
+     and the semantics of every stop are unchanged. */
+  --c-white:    32 32 30;      /* card / input / dropdown surface */
+  --c-gray-50:  15 15 14;      /* page background, subtle fills   */
+  --c-gray-100: 45 45 42;      /* hairline dividers               */
+  --c-gray-200: 64 64 60;      /* borders                         */
   --c-gray-300: 74 74 70;
   --c-gray-400: 122 122 116;
   --c-gray-500: 150 150 144;
@@ -137,8 +222,94 @@ html.dark {
   --shadow-card-md: 0 4px 12px -2px rgba(0,0,0,0.55), 0 2px 4px -2px rgba(0,0,0,0.40);
   --shadow-card-lg: 0 16px 32px -8px rgba(0,0,0,0.65), 0 4px 8px -4px rgba(0,0,0,0.45);
 
+  /* ── Semantic ramps, INVERTED ──────────────────────────────────────────
+     Same treatment `gray` has had since step033, and for the same reason.
+     A tint stop and its text stop swap ends, so:
+
+       bg-red-50 text-red-700     → deep red block, light red text
+       bg-amber-50 border-amber-100 → deep amber block, readable border
+       bg-emerald-50 text-emerald-600 → deep green block, light green text
+
+     The 500 stop barely moves, so `bg-red-500` destructive buttons and
+     `text-emerald-500` dots look the same in both modes. Nothing in any
+     component changed; 352 class usages simply started behaving. */
+  /* red — inverted */
+  --c-red-50: 69 10 10;
+  --c-red-100: 127 29 29;
+  --c-red-200: 153 27 27;
+  --c-red-300: 185 28 28;
+  --c-red-400: 220 38 38;
+  --c-red-500: 239 68 68;
+  --c-red-600: 248 113 113;
+  --c-red-700: 252 165 165;
+  --c-red-800: 254 202 202;
+  --c-red-900: 254 226 226;
+  --c-red-950: 254 242 242;
+  /* amber — inverted */
+  --c-amber-50: 69 26 3;
+  --c-amber-100: 120 53 15;
+  --c-amber-200: 146 64 14;
+  --c-amber-300: 180 83 9;
+  --c-amber-400: 217 119 6;
+  --c-amber-500: 245 158 11;
+  --c-amber-600: 251 191 36;
+  --c-amber-700: 252 211 77;
+  --c-amber-800: 253 230 138;
+  --c-amber-900: 254 243 199;
+  --c-amber-950: 255 251 235;
+  /* emerald — inverted */
+  --c-emerald-50: 2 44 34;
+  --c-emerald-100: 6 78 59;
+  --c-emerald-200: 6 95 70;
+  --c-emerald-300: 4 120 87;
+  --c-emerald-400: 5 150 105;
+  --c-emerald-500: 16 185 129;
+  --c-emerald-600: 52 211 153;
+  --c-emerald-700: 110 231 183;
+  --c-emerald-800: 167 243 208;
+  --c-emerald-900: 209 250 229;
+  --c-emerald-950: 236 253 245;
+  /* blue — inverted */
+  --c-blue-50: 23 37 84;
+  --c-blue-100: 30 58 138;
+  --c-blue-200: 30 64 175;
+  --c-blue-300: 29 78 216;
+  --c-blue-400: 37 99 235;
+  --c-blue-500: 59 130 246;
+  --c-blue-600: 96 165 250;
+  --c-blue-700: 147 197 253;
+  --c-blue-800: 191 219 254;
+  --c-blue-900: 219 234 254;
+  --c-blue-950: 239 246 255;
+  /* purple — inverted */
+  --c-purple-50: 59 7 100;
+  --c-purple-100: 88 28 135;
+  --c-purple-200: 107 33 168;
+  --c-purple-300: 126 34 206;
+  --c-purple-400: 147 51 234;
+  --c-purple-500: 168 85 247;
+  --c-purple-600: 192 132 252;
+  --c-purple-700: 216 180 254;
+  --c-purple-800: 233 213 255;
+  --c-purple-900: 243 232 255;
+  --c-purple-950: 250 245 255;
+  /* orange — inverted */
+  --c-orange-50: 67 20 7;
+  --c-orange-100: 124 45 18;
+  --c-orange-200: 154 52 18;
+  --c-orange-300: 194 65 12;
+  --c-orange-400: 234 88 12;
+  --c-orange-500: 249 115 22;
+  --c-orange-600: 251 146 60;
+  --c-orange-700: 253 186 116;
+  --c-orange-800: 254 215 170;
+  --c-orange-900: 255 237 213;
+  --c-orange-950: 255 247 237;
+
   color-scheme: dark;   /* native scrollbars, form controls, date pickers */
 }
+
+
 
 /* ═══ ACCENT RAMPS ═════════════════════════════════════════════════════════
    Unchanged in step033. Mapped onto Tailwind's `teal` scale, which the whole
@@ -439,4 +610,24 @@ html[data-animations="off"] *:not(.animate-spin)::after {
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+}
+
+/* ── Accent tints in dark mode ─────────────────────────────────────────────
+   The accent ramp is NOT inverted, because `bg-teal-500` is the primary
+   button in both modes and inverting would swap it out from under every
+   call site. But its light tints have the same problem the semantic ramps
+   had — `bg-teal-50 text-teal-700` on a Badge was a near-white chip in dark
+   mode. Only the four tint stops are remapped, to the dark end of the same
+   ramp; 400 through 950 are untouched, so buttons, focus rings and the
+   stepper are unaffected.
+
+   PLACED LAST ON PURPOSE. `html.dark` and `html[data-accent="teal"]` have
+   IDENTICAL specificity, so source order decides. Written up beside the rest
+   of the dark palette it sat BEFORE the accent ramps and was silently
+   overwritten by every one of them. Do not move this block up. */
+html.dark {
+  --c-accent-50:  var(--c-accent-950);
+  --c-accent-100: var(--c-accent-900);
+  --c-accent-200: var(--c-accent-800);
+  --c-accent-300: var(--c-accent-700);
 }

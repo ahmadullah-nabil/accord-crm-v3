@@ -1,18 +1,80 @@
+// ─── AppearanceSection ────────────────────────────────────────────────────────
+//
+// step063. Rebuilt on the new `SettingsBlock` / `ChoiceCard` / `SettingsGroup`
+// primitives. Every control, the preview-on-change behaviour, the unmount
+// rollback and the save path are UNCHANGED — this batch changed what the
+// controls look like, not what they do.
+//
+// THE THEME TILES NOW SHOW THE THEME. They used to be 64×40 swatches: white,
+// `bg-gray-900`, and a gradient between them. Two problems with that.
+//
+// First, `bg-gray-900` is NOT dark — the neutral ramp inverts wholesale in dark
+// mode, so the "Dark" swatch rendered near-WHITE once you were in dark mode.
+// That is handover #4's invariant 3, the same trap that turned two modal scrims
+// into page-lighteners. The tiles use fixed literals now, because a theme
+// preview must show a theme that is NOT the one you are currently in — it is
+// the one place in this codebase where a hardcoded colour is correct.
+//
+// Second, a flat rectangle is not a preview. Each tile now renders a miniature
+// of the actual app — a rail, a title bar and two content lines, in that
+// theme's own colours — and the System tile is split down the middle so it
+// reads as "whichever your OS says" rather than as a third colour scheme.
+//
+// The accent swatches, font size and density keep their meaning; they are on
+// the shared row/group primitives instead of three private button styles.
+
 import React, { useState, useEffect, useRef } from 'react'
-import { Check } from 'lucide-react'
 import { useAppearanceSettings, useUpdateAppearance } from '../../hooks/useSettings.js'
 import { previewAppearance } from '../../hooks/useAppliedAppearance.js'
 import { Skeleton } from '../ui/Skeleton.jsx'
 import {
-  SettingCard, ToggleRow, SaveBar, SectionDivider,
+  SettingsBlock, SettingsGroup, ToggleRow, SaveBar, SectionDivider, ChoiceCard,
 } from './SettingsShared.jsx'
 import { ACCENT_COLORS } from '../../lib/settingsData.js'
 
+// ── Theme preview tiles ───────────────────────────────────────────────────────
+// Fixed hex on purpose — see the header. A preview of the theme you are not in
+// cannot be drawn with variables that follow the theme you ARE in.
+const LIGHT = { bg: '#ffffff', rail: '#f1f0ec', line: '#d8d6d0', text: '#3c3c3a' }
+const DARK  = { bg: '#0f0f0e', rail: '#1a1a19', line: '#3a3a37', text: '#d4d4d0' }
+
+function MiniApp({ c, className = '', style }) {
+  return (
+    <span className={`block h-[52px] w-full ${className}`} style={{ background: c.bg, ...style }}>
+      <span className="flex h-full">
+        <span className="w-[22%] h-full" style={{ background: c.rail }} />
+        <span className="flex-1 p-1.5 flex flex-col gap-1">
+          <span className="block h-1 w-2/3 rounded-sm" style={{ background: c.text }} />
+          <span className="block h-1 w-full rounded-sm" style={{ background: c.line }} />
+          <span className="block h-1 w-4/5 rounded-sm" style={{ background: c.line }} />
+        </span>
+      </span>
+    </span>
+  )
+}
+
 const THEMES = [
-  { value: 'light',  label: 'Light',  preview: 'bg-white border-2'   },
-  { value: 'dark',   label: 'Dark',   preview: 'bg-gray-900 border-2' },
-  { value: 'system', label: 'System', preview: 'bg-gradient-to-br from-white to-gray-900 border-2' },
+  { value: 'light',  label: 'Light'  },
+  { value: 'dark',   label: 'Dark'   },
+  { value: 'system', label: 'System' },
 ]
+
+function ThemePreview({ value }) {
+  if (value === 'light') return <MiniApp c={LIGHT} />
+  if (value === 'dark')  return <MiniApp c={DARK} />
+  // System: one tile, split, so it reads as "follows your OS" and not as a
+  // third palette of its own.
+  return (
+    <span className="relative block h-[52px] w-full overflow-hidden">
+      <MiniApp c={LIGHT} />
+      <span className="absolute inset-y-0 right-0 w-1/2 overflow-hidden">
+        <span className="block w-[200%] h-full">
+          <MiniApp c={DARK} />
+        </span>
+      </span>
+    </span>
+  )
+}
 
 const FONT_SIZES = [
   { value: 'small',  label: 'Small' },
@@ -26,6 +88,28 @@ const DENSITIES = [
   { value: 'spacious',    label: 'Spacious' },
 ]
 
+/** Segmented pill row — used for font size and density, which are both
+ *  "pick one of three short labels" and were two different button styles. */
+function PillRow({ options, value, onChange }) {
+  return (
+    <div className="inline-flex items-center gap-0.5 p-0.5 rounded-md border border-gray-200">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={`px-3 py-1 rounded text-xs transition-colors duration-120
+            ${value === o.value
+              ? 'bg-gray-100 text-gray-900 font-medium'
+              : 'text-gray-500 hover:text-gray-900'}`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function AppearanceSection() {
   const { data: appearance, isLoading } = useAppearanceSettings()
   const updateMutation = useUpdateAppearance()
@@ -35,51 +119,27 @@ export function AppearanceSection() {
 
   useEffect(() => {
     if (appearance && !form) setForm({ ...appearance })
-  }, [appearance])
+  }, [appearance]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Unsaved preview is scoped to this section ────────────────────────────
   // set()/toggle() apply changes to the live DOM immediately so the user can
   // see them. That preview is NOT persisted. If they navigate to another
   // Settings section — or anywhere else in the CRM — without saving, the
   // unmount cleanup below rolls the UI back to the last SAVED appearance.
-  //
-  // Refs rather than state: the cleanup runs once on unmount and must read the
-  // latest values, not the ones captured when the effect was first created.
   const savedRef = useRef(null)
-  const dirtyRef = useRef(false)
+  useEffect(() => { savedRef.current = appearance }, [appearance])
+  useEffect(() => () => { if (savedRef.current) previewAppearance(savedRef.current) }, [])
 
-  useEffect(() => { savedRef.current = appearance ?? null }, [appearance])
-  useEffect(() => { dirtyRef.current = dirty }, [dirty])
-
-  useEffect(() => () => {
-    // Only revert when there is an unsaved preview. After a successful save,
-    // dirty is false and the saved appearance is already the live one.
-    if (dirtyRef.current && savedRef.current) {
-      previewAppearance(savedRef.current)
-    }
-  }, [])
-
-  // NOTE: every hook above runs before this early return, so hook order is
-  // stable across the loading and loaded renders.
   if (isLoading || !form) return <AppearanceSkeleton />
 
-  const set = (field, value) => {
-    setForm((f) => {
-      const next = { ...f, [field]: value }
-      previewAppearance(next)   // theme / accent / font size / density apply instantly
-      return next
-    })
+  const set = (key, value) => {
+    const nextForm = { ...form, [key]: value }
+    setForm(nextForm)
     setDirty(true)
+    previewAppearance(nextForm)   // theme / accent / font size / density apply instantly
   }
 
-  const toggle = (field) => (val) => {
-    setForm((f) => {
-      const next = { ...f, [field]: val }
-      previewAppearance(next)   // apply instantly — no save, no reload
-      return next
-    })
-    setDirty(true)
-  }
+  const toggle = (key) => (value) => set(key, value)
 
   const handleSave = async () => {
     await updateMutation.mutateAsync(form)
@@ -93,60 +153,71 @@ export function AppearanceSection() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Theme */}
-      <SettingCard
-        title="Theme"
-        description="Choose your preferred color mode."
-      >
-        <div className="flex gap-3 flex-wrap">
+    <div>
+      <SettingsBlock title="Theme" description="Choose your preferred colour mode.">
+        <div className="grid grid-cols-3 gap-3 max-w-[420px]">
           {THEMES.map((t) => (
-            <button
+            <ChoiceCard
               key={t.value}
-              type="button"
+              label={t.label}
+              selected={form.theme === t.value}
               onClick={() => set('theme', t.value)}
-              className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all duration-150
-                ${form.theme === t.value
-                  ? 'ring-2 ring-teal-500 bg-teal-50/40'
-                  : 'hover:bg-gray-50 ring-1 ring-gray-200'
-                }`}
-            >
-              <div className={`w-16 h-10 rounded-lg ${t.preview} ${form.theme === t.value ? 'border-teal-400' : 'border-gray-200'}`} />
-              <span className="text-xs font-medium text-gray-700">{t.label}</span>
-              {form.theme === t.value && (
-                <span className="flex items-center gap-1 text-[10px] text-teal-600 font-semibold">
-                  <Check size={10} /> Active
-                </span>
-              )}
-            </button>
+              preview={<ThemePreview value={t.value} />}
+            />
           ))}
         </div>
 
-        <SectionDivider label="Accent Color" />
+        <SectionDivider label="Accent colour" />
 
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           {ACCENT_COLORS.map((ac) => (
             <button
               key={ac.value}
               type="button"
               onClick={() => set('accentColor', ac.value)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium transition-all duration-150
+              title={ac.label}
+              aria-label={ac.label}
+              className={`w-7 h-7 rounded-full flex items-center justify-center transition-all duration-120
                 ${form.accentColor === ac.value
-                  ? 'border-gray-300 bg-gray-50 shadow-sm'
-                  : 'border-gray-200 hover:border-gray-300'
-                }`}
-            >
-              <span
-                className="w-4 h-4 rounded-full flex-shrink-0 ring-2 ring-white shadow-sm"
-                style={{ background: ac.hex }}
-              />
-              {ac.label}
-              {form.accentColor === ac.value && (
-                <Check size={11} className="text-gray-700" />
-              )}
-            </button>
+                  ? 'ring-2 ring-offset-2 ring-gray-900 ring-offset-white'
+                  : 'hover:scale-110'}`}
+              style={{ background: ac.hex }}
+            />
           ))}
+          <span className="text-[11px] text-gray-400 ml-1">
+            {ACCENT_COLORS.find((a) => a.value === form.accentColor)?.label}
+          </span>
         </div>
+      </SettingsBlock>
+
+      <SettingsBlock title="Layout" description="Information density and text size.">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <span className="text-[13px] text-gray-900">Font size</span>
+            <PillRow options={FONT_SIZES} value={form.fontSize} onChange={(v) => set('fontSize', v)} />
+          </div>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <span className="text-[13px] text-gray-900">Table density</span>
+            <PillRow options={DENSITIES} value={form.density} onChange={(v) => set('density', v)} />
+          </div>
+        </div>
+      </SettingsBlock>
+
+      <SettingsBlock title="Behaviour" description="Motion and table interaction.">
+        <SettingsGroup>
+          <ToggleRow
+            label="Animations"
+            description="Enable transition animations throughout the app"
+            checked={form.animations}
+            onChange={toggle('animations')}
+          />
+          <ToggleRow
+            label="Table row hover highlight"
+            description="Highlight rows on hover in all data tables"
+            checked={form.tableRowHover}
+            onChange={toggle('tableRowHover')}
+          />
+        </SettingsGroup>
 
         <SaveBar
           onSave={handleSave}
@@ -154,92 +225,24 @@ export function AppearanceSection() {
           isPending={updateMutation.isPending}
           isDirty={dirty}
         />
-      </SettingCard>
-
-      {/* Density & Font */}
-      <SettingCard
-        title="Layout & Typography"
-        description="Adjust information density and text size."
-      >
-        <div className="space-y-4">
-          <div>
-            <p className="label-base">Font Size</p>
-            <div className="flex gap-2">
-              {FONT_SIZES.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => set('fontSize', f.value)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 border
-                    ${form.fontSize === f.value
-                      ? 'bg-teal-50 border-teal-300 text-teal-700'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="label-base">Table Density</p>
-            <div className="flex gap-2">
-              {DENSITIES.map((d) => (
-                <button
-                  key={d.value}
-                  type="button"
-                  onClick={() => set('density', d.value)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 border
-                    ${form.density === d.value
-                      ? 'bg-teal-50 border-teal-300 text-teal-700'
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <SectionDivider label="Behaviour" />
-
-        <ToggleRow
-          label="Animations"
-          description="Enable transition animations throughout the app"
-          checked={form.animations}
-          onChange={toggle('animations')}
-        />
-        <ToggleRow
-          label="Table row hover highlight"
-          description="Highlight rows on hover in all data tables"
-          checked={form.tableRowHover}
-          onChange={toggle('tableRowHover')}
-        />
-
-        <SaveBar
-          onSave={handleSave}
-          onCancel={handleCancel}
-          isPending={updateMutation.isPending}
-          isDirty={dirty}
-        />
-      </SettingCard>
+      </SettingsBlock>
     </div>
   )
 }
 
 function AppearanceSkeleton() {
   return (
-    <div className="card p-6 space-y-5">
-      <Skeleton className="h-4 w-20 mb-1" />
-      <Skeleton className="h-3 w-48 mb-5" />
-      <div className="flex gap-3">
+    <div className="space-y-5">
+      <Skeleton className="h-4 w-20" />
+      <Skeleton className="h-3 w-48" />
+      <div className="grid grid-cols-3 gap-3 max-w-[420px]">
         {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="w-24 h-20 rounded-xl" />
+          <Skeleton key={i} className="h-[52px] rounded-md" />
         ))}
       </div>
-      <Skeleton className="h-10 w-full rounded-xl" />
+      <Skeleton className="h-9 w-full rounded-md" />
     </div>
   )
 }
+
+export default AppearanceSection

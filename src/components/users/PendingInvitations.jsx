@@ -131,7 +131,7 @@ export function PendingInvitations() {
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => { revoke.mutate(inv.id); setConfirmId('') }}
-                        className="text-xs px-2.5 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600"
+                        className="text-xs px-2.5 py-1.5 rounded-lg bg-red-500 text-onfill hover:bg-red-600"
                       >
                         Revoke
                       </button>

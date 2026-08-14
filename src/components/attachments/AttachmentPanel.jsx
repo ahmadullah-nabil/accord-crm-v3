@@ -154,7 +154,7 @@ export function AttachmentPanel({ relatedType, relatedId, compact = false }) {
                       remove.mutate({ id: f.id, storagePath: f.storagePath })
                       setConfirmId('')
                     }}
-                    className="text-xs px-2 py-1 rounded-lg bg-red-500 text-white hover:bg-red-600"
+                    className="text-xs px-2 py-1 rounded-lg bg-red-500 text-onfill hover:bg-red-600"
                   >
                     Delete
                   </button>

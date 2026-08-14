@@ -61,10 +61,36 @@ export default {
       colors: {
         // Primary surface (cards, inputs, dropdowns, modals)
         white: 'rgb(var(--c-white) / <alpha-value>)',
+
+        // step063 — text that sits ON a saturated fill.
+        // `white` above is a SURFACE token: it resolves to a dark value in
+        // dark mode, which is correct for a card and wrong for the label on a
+        // red button. `bg-red-500 text-white` was rendering near-black text on
+        // red once you switched themes. `text-onfill` never remaps, the same
+        // way `black` deliberately never remaps.
+        onfill: '#ffffff',
         // Neutral ramp — inverted wholesale in dark mode
         gray:  ramp('gray'),
         // Accent ramp — follows the user's accent preference
         teal:  ramp('accent'),
+
+        // ── Semantic ramps (step063) ────────────────────────────────────
+        // These were Tailwind's built-in literals until now, which is why
+        // dark mode looked unfinished: `gray` inverts wholesale in dark
+        // mode and these did NOT, so a `bg-red-50 text-red-700` banner
+        // stayed a near-WHITE block with dark text on a near-black page.
+        // 352 such usages across the app.
+        //
+        // Routing them through variables lets index.css invert them in
+        // dark mode exactly as it already inverts `gray`. Every existing
+        // class keeps working and simply starts behaving in dark mode —
+        // no component edits, no `dark:` variants.
+        red:     ramp('red'),
+        amber:   ramp('amber'),
+        emerald: ramp('emerald'),
+        blue:    ramp('blue'),
+        purple:  ramp('purple'),
+        orange:  ramp('orange'),
         sidebar: {
           bg:     'rgb(var(--c-sidebar-bg) / <alpha-value>)',
           hover:  'rgb(var(--c-sidebar-hover) / <alpha-value>)',
