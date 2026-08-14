@@ -129,6 +129,39 @@ export function LeadFormModal() {
 
   const isLast = step === STEPS.length - 1
 
+  // ── WHY THE PRIMARY BUTTON IS ALWAYS type="submit" ────────────────────────
+  //
+  // step061 fixes a bug that skipped the Summary step entirely: clicking
+  // Continue on step 2 saved the record instead of advancing to step 3.
+  //
+  // The cause was DOM NODE REUSE. The footer rendered
+  //   {isLast ? <button type="submit" form="..."> : <button type="button">}
+  // and React reconciles those two as the SAME <button> element — same tag,
+  // same position — so it patches the attributes rather than replacing the
+  // node. The click handler ran, `next()` set step to the last one, React
+  // flushed that update synchronously (a click is a discrete event), and by
+  // the time the browser got round to performing the click's DEFAULT ACTION
+  // the very button that had just been clicked was now `type="submit"`
+  // pointing at the form. The browser submitted it. One physical button,
+  // mutated mid-click.
+  //
+  // A second, independent path to the same symptom: pressing Enter in ANY
+  // field fired the form's onSubmit from ANY step, which ran the full
+  // validate() and saved.
+  //
+  // BOTH ARE CLOSED BY THE SAME CHANGE. The button never changes type — only
+  // its label — so there is nothing to mutate mid-click, and every submit
+  // (button or Enter) is routed through `onFormSubmit`, which advances the
+  // step unless this is the last one. Enter now means Continue, which is what
+  // a person expects it to mean.
+  //
+  // Do not "tidy" this back into a ternary that swaps the element type.
+  const onFormSubmit = (e) => {
+    e.preventDefault()
+    if (!isLast) { next(); return }
+    handleSubmit(e)
+  }
+
   return (
     <Modal
       open={isOpen}
@@ -150,20 +183,13 @@ export function LeadFormModal() {
           >
             Cancel
           </button>
-          {isLast
-            ? (
-              <button type="submit" form="lead-form" className="btn-primary">
-                {isEdit ? 'Save changes' : 'Create lead'}
-              </button>
-            )
-            : (
-              <button type="button" onClick={next} className="btn-primary">Continue</button>
-            )
-          }
+          <button type="submit" form="lead-form" className="btn-primary">
+            {isLast ? (isEdit ? 'Save changes' : 'Create lead') : 'Continue'}
+          </button>
         </>
       }
     >
-      <form id="lead-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
+      <form id="lead-form" onSubmit={onFormSubmit} className="flex-1 min-h-0 flex flex-col">
         <ModalBody>
           {step === 0 && (
             <FormSection first>
