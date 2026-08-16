@@ -11,6 +11,7 @@
 // a single place governs what "an integration" looks like to the UI.
 
 import { requireUser, adminClient } from '../_shared/supabase.ts'
+import { callerOrgId } from '../_shared/tenancy.ts'
 import { corsHeaders, json, errorResponse } from '../_shared/http.ts'
 import { ADAPTERS } from '../_shared/providers/index.ts'
 
@@ -37,12 +38,22 @@ Deno.serve(async (req) => {
     const user  = await requireUser(req)
     const admin = adminClient()
 
-    // Explicitly scoped to the caller. The service-role client bypasses RLS,
-    // so this filter is doing the isolation work and must never be removed.
+    // step065 — TWO filters, not one.
+    //
+    // user_id alone was the isolation until 028: sound only while every user
+    // belongs to exactly one organisation. A person who is Admin at Accord and
+    // Employee at a customer would otherwise see their Accord mailbox listed
+    // inside the customer's workspace, and be able to send from it.
+    //
+    // The service-role client bypasses RLS, so both filters are doing the
+    // isolation work in code. Neither is optional.
+    const orgId = await callerOrgId(admin, user.id)
+
     const { data, error } = await admin
       .from('integration_accounts')
       .select(SAFE_COLUMNS)
       .eq('user_id', user.id)
+      .eq('org_id', orgId)
       .order('connected_at', { ascending: false })
 
     if (error) {

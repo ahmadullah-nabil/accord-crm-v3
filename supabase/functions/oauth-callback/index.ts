@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
       .eq('state', state)
       .is('consumed_at', null)
       .gt('expires_at', nowIso)
-      .select('state, user_id, provider, capability, code_verifier, redirect_to')
+      .select('state, user_id, org_id, provider, capability, code_verifier, redirect_to')
 
     const stateRow = stateRows?.[0]
     if (stateErr || !stateRow) {
@@ -141,6 +141,7 @@ Deno.serve(async (req) => {
     const { data: existing } = await admin
       .from('integration_accounts')
       .select('id, capabilities')
+      .eq('org_id', stateRow.org_id)
       .eq('user_id', stateRow.user_id)
       .eq('provider', stateRow.provider)
       .eq('provider_account_id', identity.accountId)
@@ -154,6 +155,7 @@ Deno.serve(async (req) => {
       .from('integration_accounts')
       .upsert({
         ...(existing ? { id: existing.id } : {}),
+        org_id:              stateRow.org_id,
         user_id:             stateRow.user_id,
         provider:            stateRow.provider,
         provider_account_id: identity.accountId,
@@ -167,7 +169,13 @@ Deno.serve(async (req) => {
         last_error_at:       null,
         connected_at:        nowIso,
         updated_at:          nowIso,
-      }, { onConflict: 'user_id,provider,provider_account_id' })
+        // step065 — MUST match the unique index, which 028 widened to include
+        // org_id. Left as the old three-column target this upsert fails
+        // outright with "no unique or exclusion constraint matching the ON
+        // CONFLICT specification", and every reconnect breaks. The widening
+        // is deliberate: the same Gmail connected in two workspaces is two
+        // grants, not one row that the second connect overwrites.
+      }, { onConflict: 'org_id,user_id,provider,provider_account_id' })
       .select('id')
       .single()
 

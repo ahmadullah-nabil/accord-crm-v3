@@ -10,6 +10,7 @@
 // integration_oauth_states, which the browser cannot read (RLS, zero policies).
 
 import { requireUser, adminClient } from '../_shared/supabase.ts'
+import { callerOrgId } from '../_shared/tenancy.ts'
 import { getAdapter, supportsCapability } from '../_shared/providers/index.ts'
 import { randomToken, createCodeVerifier, codeChallengeS256 } from '../_shared/crypto.ts'
 import { corsHeaders, json, errorResponse, resolveOrigin } from '../_shared/http.ts'
@@ -73,9 +74,20 @@ Deno.serve(async (req) => {
     const safeOrigin = resolveOrigin(req.headers.get('Origin'))
     const safeReturn = `${safeOrigin}${safePath}`
 
+    // step065 — the state row carries the org the connection is FOR.
+    //
+    // This is the only place that can decide it. By the time the provider
+    // redirects back to oauth-callback there is no session and no JWT, so the
+    // callback cannot ask "which workspace was this started from" — it can only
+    // read what was written here. Resolving it at callback time from the user's
+    // memberships would silently attach the mailbox to whichever org happened
+    // to sort first.
+    const orgId = await callerOrgId(admin, user.id)
+
     const { error: stateErr } = await admin.from('integration_oauth_states').insert({
       state,
       user_id:       user.id,
+      org_id:        orgId,
       provider,
       capability,
       code_verifier: codeVerifier,

@@ -12,6 +12,7 @@
 // user when they need to finish the job in their provider's account settings.
 
 import { requireUser, adminClient } from '../_shared/supabase.ts'
+import { assertOrgAccess } from '../_shared/tenancy.ts'
 import { getAdapter } from '../_shared/providers/index.ts'
 import { corsHeaders, json, errorResponse } from '../_shared/http.ts'
 import { IntegrationError } from '../_shared/types.ts'
@@ -36,7 +37,7 @@ Deno.serve(async (req) => {
     // optional and it is not decoration.
     const { data: account, error: accErr } = await admin
       .from('integration_accounts')
-      .select('id, user_id, provider, api_domain, account_email')
+      .select('id, user_id, org_id, provider, api_domain, account_email')
       .eq('id', accountId)
       .eq('user_id', user.id)
       .maybeSingle()
@@ -47,6 +48,14 @@ Deno.serve(async (req) => {
       // that someone else's account exists.
       throw new IntegrationError('bad_request', 'Integration not found.', 404)
     }
+
+    // step065 — and it must belong to an org this user is actually in.
+    // user_id alone stopped User A disconnecting User B's mailbox. It does not
+    // stop the same human, acting in workspace B, from revoking a grant that
+    // belongs to workspace A. assertOrgAccess throws a 404 with the same
+    // wording as the branch above, on purpose: "belongs to another tenant" and
+    // "does not exist" must be indistinguishable from outside.
+    await assertOrgAccess(admin, user.id, [account.org_id], 'That integration')
 
     // Credentials are read here and NOWHERE else outside this server boundary.
     //

@@ -10,6 +10,7 @@ import { useAppliedAppearance } from '../hooks/useAppliedAppearance.js'
 import { useCommandMenu } from '../hooks/useCommandMenu.js'
 import { useMembershipStatus }  from '../hooks/useInvitations.js'
 import { NoOrganization }       from '../components/auth/NoOrganization.jsx'
+import { PendingInviteBanner }  from '../components/auth/PendingInviteBanner.jsx'
 
 export function AppLayout() {
   const { mobileMenuOpen, closeMobileMenu } = useUiStore()
@@ -83,6 +84,18 @@ export function AppLayout() {
       {/* Main content area */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Navbar />
+
+        {/* step066 — invitations that arrived AFTER this account existed.
+            The 024 signup trigger can only fire on auth.users INSERT, so an
+            invitation to someone who already has an account had no route in
+            at all. Mounted here, above <main> and below the navbar, so it is
+            reachable from every route and scrolls with nothing.
+
+            Renders null when there is nothing pending, which is the normal
+            case — it is not a permanent band of chrome. `shrink-0` so it
+            never eats the height <main> passes down to the pages that fill
+            the viewport. */}
+        <PendingInviteBanner />
 
         {/* Scrollable page content.
             Padding tightened from p-4/p-6 to p-3/p-4 — the modules are still

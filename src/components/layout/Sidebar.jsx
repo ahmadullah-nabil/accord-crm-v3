@@ -27,6 +27,7 @@
 
 import React from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
+import { OrgSwitcher } from './OrgSwitcher.jsx'
 import {
   LayoutDashboard,
   Users,
@@ -140,6 +141,14 @@ export function Sidebar() {
           </>
         )}
       </div>
+
+      {/* ── Workspace switcher ───────────────────────────────────────────────
+          step066. Renders NOTHING for a single-org user, which is everyone
+          today — so this line adds no chrome until the first person holds a
+          second membership, at which point it appears without a deploy.
+          Above the search trigger on purpose: which workspace you are in
+          scopes everything below it, including what search can find. */}
+      <OrgSwitcher collapsed={sidebarCollapsed} />
 
       {/* ── Search trigger ───────────────────────────────────────────────────
           Not an input. The field lives inside the command menu now, so there is

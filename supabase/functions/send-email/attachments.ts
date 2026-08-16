@@ -18,7 +18,8 @@
 // │ company's quotation in their own inbox. Storage RLS never sees it,      │
 // │ because the service role never asks.                                     │
 // │                                                                          │
-// │ assertOwnership() below is the only thing standing in the way. It does  │
+// │ assertOrgAccess() (_shared/tenancy.ts) is the only thing standing in    │
+// │ the way. It does                                                        │
 // │ in code what a policy would have done, because on this path no policy   │
 // │ runs. Do not remove it, do not make it conditional, and do not replace  │
 // │ it with current_org_id() — that reads a JWT claim, and there is no JWT  │
@@ -30,6 +31,7 @@ import { adminClient } from '../_shared/supabase.ts'
 import { base64Encode } from '../_shared/mime.ts'
 import { IntegrationError, type EmailAttachment } from '../_shared/types.ts'
 import { assertWithinProviderLimit } from '../_shared/attachments.ts'
+import { assertOrgAccess } from '../_shared/tenancy.ts'
 
 type Admin = ReturnType<typeof adminClient>
 
@@ -79,7 +81,7 @@ export async function loadAttachments(
   const rows = (data ?? []) as AttachmentRow[]
 
   // A missing row and a row belonging to somebody else are reported the same
-  // way, below, and on purpose — see assertOwnership.
+  // way, below, and on purpose — see assertOrgAccess in _shared/tenancy.ts.
   if (rows.length !== ids.length) {
     throw new IntegrationError(
       'attachment_failed',
@@ -88,7 +90,11 @@ export async function loadAttachments(
     )
   }
 
-  await assertOwnership(admin, userId, rows)
+  // step065 — was a private assertOwnership() in this file. Same rule, same
+  // fail-closed behaviour, same 404-not-403 wording; it now lives in
+  // _shared/tenancy.ts so the other five functions get it too instead of this
+  // being the one protected path in the whole functions directory.
+  await assertOrgAccess(admin, userId, rows.map((r) => r.org_id), 'One of the attached files')
 
   // Size is checked against the recorded size_bytes before a single byte is
   // downloaded. Pulling 20 MB out of Storage only to discover the provider will
@@ -109,55 +115,6 @@ export async function loadAttachments(
   return { files, ids: rows.map((r) => r.id) }
 }
 
-/**
- * Every file must belong to an organisation this user is an active member of.
- *
- * Membership is read from `memberships` rather than from current_org_id(),
- * which resolves through the JWT and is meaningless under the service role.
- * The set form also handles a user who belongs to more than one organisation —
- * a single "their org" value would be a guess about which one they meant.
- */
-async function assertOwnership(
-  admin: Admin,
-  userId: string,
-  rows: AttachmentRow[],
-): Promise<void> {
-  const { data, error } = await admin
-    .from('memberships')
-    .select('org_id')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-
-  if (error) {
-    console.error('[send-email] membership lookup failed:', error.message)
-    // Fails CLOSED. An unreadable membership list means we cannot establish
-    // that the user may have these files, and "cannot establish" must never
-    // resolve to "allow" on the path that reads other tenants' documents.
-    throw new IntegrationError('attachment_failed', 'The files could not be verified.', 500)
-  }
-
-  const allowed = new Set((data ?? []).map((m: { org_id: string }) => m.org_id))
-
-  for (const row of rows) {
-    if (!allowed.has(row.org_id)) {
-      // Logged with enough detail to investigate, because a request that
-      // reaches this line is either a bug or an attempt.
-      console.error(
-        `[send-email] SECURITY: user ${userId} requested attachment ${row.id} ` +
-        `owned by org ${row.org_id}`,
-      )
-      // Reported to the caller as "does not exist", identically to a deleted
-      // file. Saying "you are not allowed to attach that" would confirm the id
-      // is real and that it belongs to someone — which is the one bit of
-      // information an id-guessing attempt is actually after.
-      throw new IntegrationError(
-        'attachment_failed',
-        'One of the attached files no longer exists.',
-        404,
-      )
-    }
-  }
-}
 
 async function download(admin: Admin, row: AttachmentRow): Promise<EmailAttachment> {
   const { data, error } = await admin.storage.from('attachments').download(row.storage_path)

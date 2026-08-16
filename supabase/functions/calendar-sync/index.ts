@@ -28,6 +28,7 @@
 // a retry after a timeout create a duplicate event and re-invite everyone.
 
 import { requireUser, adminClient } from '../_shared/supabase.ts'
+import { assertOrgAccess } from '../_shared/tenancy.ts'
 import { corsHeaders, json, errorResponse } from '../_shared/http.ts'
 import { getTokenForCapability, authHeader, type ValidToken } from '../_shared/tokens.ts'
 import { getAdapter } from '../_shared/providers/index.ts'
@@ -87,7 +88,7 @@ Deno.serve(async (req) => {
       .from('meetings')
       .select(
         'id, title, description, location, scheduled_date, scheduled_time, ' +
-        'duration_mins, timezone, attendees, organizer_id, provider, ' +
+        'duration_mins, timezone, attendees, organizer_id, org_id, provider, ' +
         'external_event_id, sync_status',
       )
       .eq('id', body.meetingId)
@@ -108,6 +109,16 @@ Deno.serve(async (req) => {
         409,
       )
     }
+    // step065 — the meeting must also belong to a workspace this user is in.
+    //
+    // The organiser check below is an OWNERSHIP check and it is not a tenant
+    // check: organizer_id is a user id, and a user can hold memberships in
+    // several orgs. Without this line, someone acting in workspace B could
+    // sync a meeting that lives in workspace A purely because they happen to
+    // be its organiser there — pushing workspace A's attendee list out through
+    // the calendar grant they connected in B.
+    await assertOrgAccess(admin, user.id, [meeting.org_id], 'That meeting')
+
     if (meeting.organizer_id !== user.id) {
       throw new IntegrationError(
         'unauthorized',
