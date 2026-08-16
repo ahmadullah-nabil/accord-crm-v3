@@ -101,9 +101,10 @@ export function LeadDetailPanel() {
         // is the caller's job on arrival, which LeadRecordPage does not need to
         // do because it is a different route.
         onExpand={lead ? () => { closeDetail(); navigate(`/leads/${lead.id}`) } : undefined}
-        avatar={lead ? <Avatar name={lead.name} size="md" /> : null}
-        title={lead?.name}
-        subtitle={lead?.company}
+        avatar={lead ? <Avatar name={lead.company || lead.name} size="md" /> : null}
+        // step067 — company is the record's title, contact the subtitle.
+        title={lead?.company || lead?.name}
+        subtitle={lead?.company ? lead?.name : undefined}
         badges={lead ? <LeadBadges lead={lead} /> : null}
         nav={nav}
         actions={lead ? (

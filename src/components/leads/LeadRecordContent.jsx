@@ -38,7 +38,7 @@ import React from 'react'
 import {
   Mail, Phone, Globe, DollarSign, Calendar, TrendingUp, Tag, Hash,
   User, FileText, Clock, CheckSquare, Paperclip, Activity, Send,
-  Building2,
+  Building2, Boxes, RefreshCw,
 } from 'lucide-react'
 
 import { useLeadMeetings }   from '../../hooks/useMeetings.js'
@@ -50,6 +50,7 @@ import { useTasksStore }     from '../../stores/tasksStore.js'
 import { STAGE_COLORS, PRIORITY_COLORS } from '../../stores/leadsStore.js'
 import { Avatar }            from '../ui/Avatar.jsx'
 import { FieldGroup, RecordField } from '../ui/FieldGroup.jsx'
+import { splitModules } from '../../lib/modules.js'
 import { TimelinePanel }     from '../timeline/TimelinePanel.jsx'
 import { AttachmentPanel }   from '../attachments/AttachmentPanel.jsx'
 import { RelatedList, EmptyBlock } from '../ui/RelatedList.jsx'
@@ -108,8 +109,53 @@ export function LeadFields({ lead, assigneeRole }) {
         <RecordField label="Value" icon={DollarSign} mono>
           {fmtCurrency(lead.value)}
         </RecordField>
+        {/* step067 — one-time and recurring, stated separately and labelled
+            with their units. `mmc` is a RATE: the "/mo" is part of the value,
+            not decoration, and dropping it turns a monthly fee into a total. */}
+        <RecordField label="One-time cost (OTC)" icon={DollarSign} mono
+                     placeholder="Not quoted">
+          {lead.otc > 0 ? fmtCurrency(lead.otc) : null}
+        </RecordField>
+        <RecordField label="Monthly maintenance (MMC)" icon={RefreshCw} mono
+                     placeholder="Not quoted">
+          {lead.mmc > 0 ? `${fmtCurrency(lead.mmc)}/mo` : null}
+        </RecordField>
         <RecordField label="Stage" icon={TrendingUp}>{lead.stage}</RecordField>
         <RecordField label="Priority" icon={Activity}>{lead.priority}</RecordField>
+
+        {/* step067 — modules sit in Deal, not in Notes beside Tags.
+            What a prospect wants to buy is part of the deal's shape, the same
+            as its value and stage. Tags are how someone chose to label the
+            record; these are what the record is about.
+
+            Custom entries render in a lighter chip so a glance separates
+            "one of ours" from "something they asked for that we do not have a
+            module for" — which is the entry worth reading. */}
+        <RecordField label="Modules" icon={Boxes} placeholder="No modules recorded">
+          {lead.modules?.length
+            ? (() => {
+                const { known, custom } = splitModules(lead.modules)
+                return (
+                  <span className="flex flex-wrap gap-1">
+                    {known.map((m) => (
+                      <span key={m}
+                        className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                        {m}
+                      </span>
+                    ))}
+                    {custom.map((m) => (
+                      <span key={m}
+                        className="text-[11px] px-1.5 py-0.5 rounded border border-dashed
+                                   border-gray-300 text-gray-500"
+                        title="Not a standard module">
+                        {m}
+                      </span>
+                    ))}
+                  </span>
+                )
+              })()
+            : null}
+        </RecordField>
       </FieldGroup>
 
       <FieldGroup title="Assignee">

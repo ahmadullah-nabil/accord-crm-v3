@@ -19,11 +19,20 @@ import { useAssignableMembers } from '../../hooks/useTeam.js'
 import { Modal, ModalBody }     from '../ui/Modal.jsx'
 import { Stepper, StepHeading } from '../ui/Stepper.jsx'
 import { FormSection, FormRow, FormField, ReviewRow } from '../ui/FormKit.jsx'
+import { HRM_MODULES, splitModules, parseCustomModules } from '../../lib/modules.js'
 
 const EMPTY = {
   name: '', company: '', email: '', phone: '',
   value: '', stage: 'New', priority: 'Medium',
   source: 'Website', assignee: '', notes: '', tags: '',
+  // step067 — the form holds these SPLIT, the database holds them JOINED.
+  // `modules` is the checkbox set; `customModules` is the free-text box. They
+  // are concatenated into one TEXT[] on submit and split apart again on load,
+  // because a checkbox cannot represent "whatever the user typed" and a text
+  // box cannot represent "one of sixteen known values" without reinventing
+  // both. See lib/modules.js.
+  modules: [], customModules: '',
+  otc: '', mmc: '',
 }
 
 const STEPS = [
@@ -57,10 +66,15 @@ export function LeadFormModal() {
   useEffect(() => {
     if (isOpen) {
       if (isEdit && existingLead) {
+        const { known, custom } = splitModules(existingLead.modules || [])
         setForm({
           ...existingLead,
           tags: (existingLead.tags || []).join(', '),
           value: String(existingLead.value),
+          modules: known,
+          customModules: custom.join(', '),
+          otc: String(existingLead.otc ?? ''),
+          mmc: String(existingLead.mmc ?? ''),
         })
       } else {
         setForm(EMPTY)
@@ -113,7 +127,17 @@ export function LeadFormModal() {
       ...form,
       value: Number(form.value),
       tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      // Checked boxes first, then anything typed. Deduped, because a user who
+      // types "Payroll" into the custom box after ticking it should not create
+      // two entries the reporting query then counts twice.
+      modules: Array.from(new Set([
+        ...form.modules,
+        ...parseCustomModules(form.customModules),
+      ])),
+      otc: Number(form.otc) || 0,
+      mmc: Number(form.mmc) || 0,
     }
+    delete payload.customModules   // form-only field; there is no such column
 
     if (isEdit) {
       updateLead(existingLead.id, payload)
@@ -126,6 +150,9 @@ export function LeadFormModal() {
     setForm((f) => ({ ...f, [field]: e.target.value }))
     setErrors((err) => { const next = { ...err }; delete next[field]; return next })
   }
+
+  // Shown as a hint under Deal value; never written. See the Pricing block.
+  const annualised = (Number(form.otc) || 0) + (Number(form.mmc) || 0) * 12
 
   const isLast = step === STEPS.length - 1
 
@@ -248,7 +275,14 @@ export function LeadFormModal() {
               </FormRow>
 
               <FormRow>
-                <FormField label="Deal value (BDT)" error={errors.value} required>
+                <FormField
+                  label="Deal value (BDT)"
+                  error={errors.value}
+                  required
+                  hint={annualised
+                    ? `OTC + 12 × MMC = ৳${annualised.toLocaleString('en-BD')}`
+                    : 'The pipeline figure. Not derived from OTC/MMC.'}
+                >
                   <input type="number" className="input-base tabular-nums" placeholder="500000"
                          value={form.value} onChange={set('value')} />
                 </FormField>
@@ -260,10 +294,79 @@ export function LeadFormModal() {
                 </FormField>
               </FormRow>
 
+              {/* ── Pricing ──────────────────────────────────────────────────
+                  Two parts, because an AccordHRM deal is priced in two parts:
+                  what it costs to stand up once, and what it costs every month
+                  after. Adding them together produces a number that means
+                  nothing, so they never share a field.
+
+                  DEAL VALUE IS NOT COMPUTED FROM THESE. It is the figure the
+                  pipeline strip, the KPI tiles, the Analytics funnel and the
+                  Kanban column totals all read, and quietly redefining it
+                  would move every one of those numbers with nothing to point
+                  at. The hint above shows OTC + 12 × MMC so you can decide
+                  what to put in Deal value; it does not write it for you. */}
+              <FormRow>
+                <FormField label="One-time cost — OTC (BDT)" hint="Setup / implementation">
+                  <input type="number" min="0" className="input-base tabular-nums"
+                         placeholder="0" value={form.otc} onChange={set('otc')} />
+                </FormField>
+                <FormField label="Monthly maintenance — MMC (BDT/mo)" hint="Recurring, per month">
+                  <input type="number" min="0" className="input-base tabular-nums"
+                         placeholder="0" value={form.mmc} onChange={set('mmc')} />
+                </FormField>
+              </FormRow>
+
               <FormField label="Tags" hint="Comma-separated">
                 <input className="input-base" placeholder="Enterprise, Q2, Healthcare"
                        value={form.tags} onChange={set('tags')} />
               </FormField>
+
+              {/* ── Modules ──────────────────────────────────────────────────
+                  Which parts of AccordHRM this lead is actually asking about.
+                  Checkboxes, not a multi-select: at sixteen options a native
+                  multi-select needs ctrl-click to add a second one and shows
+                  three rows at a time, and this is a field where picking five
+                  is normal. Every option is visible and one click each.
+
+                  Deliberately NOT required. A lead that comes in before anyone
+                  knows what they want is still a lead, and a required field
+                  here would push people to tick something to get past it. */}
+              <div>
+                <label className="label-base">Modules of interest</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1.5
+                                border border-gray-200 rounded-md p-2.5">
+                  {HRM_MODULES.map((m) => {
+                    const checked = form.modules.includes(m)
+                    return (
+                      <label key={m} className="flex items-center gap-1.5 cursor-pointer min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setForm((f) => ({
+                            ...f,
+                            modules: checked
+                              ? f.modules.filter((x) => x !== m)
+                              : [...f.modules, m],
+                          }))}
+                          className="shrink-0"
+                        />
+                        <span className="text-xs text-gray-700 truncate" title={m}>{m}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+
+                <input
+                  className="input-base mt-2"
+                  placeholder="Anything else — comma-separated"
+                  value={form.customModules}
+                  onChange={set('customModules')}
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  {form.modules.length + parseCustomModules(form.customModules).length} selected
+                </p>
+              </div>
             </FormSection>
           )}
 
@@ -283,8 +386,14 @@ export function LeadFormModal() {
                 <ReviewRow label="Priority"   value={form.priority} />
                 <ReviewRow label="Source"     value={form.source} />
                 <ReviewRow label="Deal value" value={form.value ? `৳${form.value}` : ''} />
+                <ReviewRow label="OTC"        value={form.otc ? `৳${form.otc}` : ''} />
+                <ReviewRow label="MMC"        value={form.mmc ? `৳${form.mmc}/mo` : ''} />
                 <ReviewRow label="Assignee"   value={form.assignee} />
                 <ReviewRow label="Tags"       value={form.tags} />
+                <ReviewRow
+                  label="Modules"
+                  value={[...form.modules, ...parseCustomModules(form.customModules)].join(', ')}
+                />
               </div>
 
               <FormField label="Notes">

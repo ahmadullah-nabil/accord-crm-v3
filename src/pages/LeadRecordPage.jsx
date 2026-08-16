@@ -146,9 +146,10 @@ export function LeadRecordPage() {
         breadcrumb="Leads"
         onBack={() => navigate('/leads')}
         isLoading={!lead}
-        avatar={lead ? <Avatar name={lead.name} size="md" /> : null}
-        title={lead?.name ?? 'Loading…'}
-        subtitle={lead?.company}
+        avatar={lead ? <Avatar name={lead.company || lead.name} size="md" /> : null}
+        // step067 — company is the record's title, contact the subtitle.
+        title={lead ? (lead.company || lead.name) : 'Loading…'}
+        subtitle={lead?.company ? lead.name : undefined}
         badges={lead ? <LeadBadges lead={lead} /> : null}
         nav={nav}
         actions={lead ? (

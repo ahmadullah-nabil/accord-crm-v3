@@ -41,6 +41,15 @@ function toApp(row) {
     priority:     row.priority      ?? 'Medium',
     notes:        row.notes         ?? '',
     tags:         Array.isArray(row.tags) ? row.tags : [],
+    // step067. Defaults to [] rather than undefined so every consumer can call
+    // .length and .map without guarding — rows written before 031 come back
+    // with the column present and empty, not absent.
+    modules:      Array.isArray(row.modules) ? row.modules : [],
+    // step067. Two-part pricing: a one-time cost and a monthly RATE. Coerced
+    // with Number() the same way `value` is, so a row written before 031
+    // reads 0 rather than undefined and nothing downstream has to guard.
+    otc:          Number(row.otc) || 0,
+    mmc:          Number(row.mmc) || 0,
     createdAt:    row.created_at    ?? '',
     lastActivity: row.last_activity ?? '',
     // Ownership fields (nullable — not present on rows created before the patch)
@@ -66,6 +75,11 @@ function toDb(payload) {
   if (payload.tags     !== undefined) {
     row.tags = Array.isArray(payload.tags) ? payload.tags : []
   }
+  if (payload.modules  !== undefined) {
+    row.modules = Array.isArray(payload.modules) ? payload.modules : []
+  }
+  if (payload.otc      !== undefined) row.otc = Number(payload.otc) || 0
+  if (payload.mmc      !== undefined) row.mmc = Number(payload.mmc) || 0
   // Ownership fields — only written on insert, never on update
   if (payload.createdBy  !== undefined) row.created_by  = payload.createdBy  ?? ''
   if (payload.ownerId    !== undefined) row.owner_id    = payload.ownerId    ?? null

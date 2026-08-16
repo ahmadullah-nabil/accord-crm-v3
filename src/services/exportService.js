@@ -27,7 +27,15 @@ function escapeCsvCell(value) {
 }
 
 function rowToCsv(fields, record) {
-  return fields.map((f) => escapeCsvCell(record[f.key])).join(',')
+  return fields.map((f) => {
+    const raw = record[f.key]
+    // step067 — a field may supply its own formatter. Needed the moment an
+    // ARRAY column is exported: String(['Payroll','Leave']) is "Payroll,Leave",
+    // which escapeCsvCell then wraps in quotes and Excel shows correctly — but
+    // re-importing it reads as ONE value containing a comma. Joining with a
+    // semicolon keeps the two apart in both directions.
+    return escapeCsvCell(f.format ? f.format(raw, record) : raw)
+  }).join(',')
 }
 
 function buildCsvString(fields, records) {
@@ -60,8 +68,17 @@ const LEAD_EXPORT_FIELDS = [
   { key: 'priority',     header: 'Priority'       },
   { key: 'source',       header: 'Source'         },
   { key: 'value',        header: 'Value'          },
+  // step067 — three money columns, deliberately. Value is the pipeline figure;
+  // OTC and MMC are what was actually quoted. A spreadsheet that collapses
+  // them cannot answer "what is our monthly recurring revenue if these close".
+  { key: 'otc',          header: 'OTC'            },
+  { key: 'mmc',          header: 'MMC (monthly)'  },
   { key: 'assignee',     header: 'Assignee'       },
   { key: 'notes',        header: 'Notes'          },
+  // step067. "Which open leads want Payroll" is a spreadsheet question before
+  // it is ever a dashboard one, so the column has to leave the app.
+  { key: 'modules',      header: 'Modules',
+    format: (v) => (Array.isArray(v) ? v.join('; ') : '') },
   { key: 'createdAt',    header: 'Created Date'   },
   { key: 'lastActivity', header: 'Last Activity'  },
 ]

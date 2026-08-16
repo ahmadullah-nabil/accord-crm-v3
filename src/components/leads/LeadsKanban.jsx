@@ -105,17 +105,27 @@ function KanbanCard({ lead, onClick }) {
       className="bg-white rounded-lg px-2.5 py-2 border border-gray-200 cursor-pointer
                  hover:border-gray-300 hover:bg-gray-50 transition-colors duration-120 group"
     >
+      {/* step067 — company first, contact underneath. Same swap as the table;
+          a card that leads with the person while the table leads with the
+          company would make Table and Kanban look like different data. */}
       <p className="text-xs font-medium text-gray-900 leading-snug truncate
         group-hover:text-teal-700 transition-colors duration-120">
-        {lead.name}
+        {lead.company || lead.name}
       </p>
-      <p className="text-[11px] text-gray-400 truncate mt-0.5">{lead.company}</p>
+      {lead.company && (
+        <p className="text-[11px] text-gray-400 truncate mt-0.5">{lead.name}</p>
+      )}
 
       <div className="flex items-center gap-1.5 mt-1.5">
         <span className={`text-[10px] font-medium px-1 py-0.5 rounded ${pc}`}>
           {lead.priority}
         </span>
         <span className="text-xs font-medium text-gray-800 tnum">{fmt(lead.value)}</span>
+        {/* step067 — the recurring half, only when there is one. A card is
+            three lines; a permanent "৳0/mo" on every one of them is noise. */}
+        {lead.mmc > 0 && (
+          <span className="text-[10px] text-gray-400 tnum">{fmt(lead.mmc)}/mo</span>
+        )}
         {lead.source && (
           <span className="text-[10px] text-gray-400 truncate">· {lead.source}</span>
         )}

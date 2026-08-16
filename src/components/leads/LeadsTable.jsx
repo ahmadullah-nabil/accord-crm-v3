@@ -27,7 +27,7 @@
 
 import React from 'react'
 import { Target, Tag, DollarSign, Flag, Radio, User, Clock,
-         Eye, Pencil, Trash2, Calendar } from 'lucide-react'
+         Eye, Pencil, Trash2, Calendar , Building2} from 'lucide-react'
 import { useLeadsStore, STAGE_COLORS, PRIORITY_COLORS, STAGES } from '../../stores/leadsStore.js'
 import { useMeetingsStore }         from '../../stores/meetingsStore.js'
 import { useBatchLeadPermissions }  from '../../hooks/usePermissions.js'
@@ -52,16 +52,32 @@ export function LeadsTable() {
 
   const columns = [
     {
-      key: 'name',
-      label: 'Lead',
-      icon: Target,
+      // step067 — COMPANY IS THE PRIMARY TEXT, the person is secondary.
+      //
+      // This is a B2B pipeline: the deal is with Fiftytwo Digital Ltd, and
+      // Mr. Khan is who you happen to speak to there. Scanning the list for a
+      // company you recognise is the actual task, and it was the grey text.
+      //
+      // The sort key moved with it. A column whose bold text is the company
+      // but which sorts by contact name is worse than either arrangement on
+      // its own — you click the header, the order changes, and nothing you can
+      // see explains why. `key` drives both, so they cannot drift apart.
+      //
+      // The Avatar is seeded from the company too, so its initials match the
+      // bold text rather than quietly disagreeing with it. Falls back to the
+      // person's name for a lead with no company yet.
+      key: 'company',
+      label: 'Company',
+      icon: Building2,
       sortable: true,
       width: '260px',
       render: (l) => (
         <div className="flex items-center gap-2">
-          <Avatar name={l.name} size="xs" />
-          <span className="font-medium text-gray-900 truncate">{l.name}</span>
-          {l.company && <span className="text-gray-400 truncate">· {l.company}</span>}
+          <Avatar name={l.company || l.name} size="xs" />
+          <span className="font-medium text-gray-900 truncate">
+            {l.company || <span className="text-gray-400 italic">No company</span>}
+          </span>
+          {l.name && <span className="text-gray-400 truncate">· {l.name}</span>}
         </div>
       ),
     },
@@ -95,7 +111,24 @@ export function LeadsTable() {
       sortable: true,
       align: 'right',
       width: '120px',
-      render: (l) => <span className="font-medium text-gray-800 tnum">{fmt(l.value)}</span>,
+      // step067 — OTC/MMC ride UNDER the pipeline figure rather than taking
+      // two more columns. The table is already nine columns wide on a laptop;
+      // a second line inside a cell that is right-aligned and mostly empty
+      // costs nothing horizontally and puts the three numbers where you are
+      // already looking. Hidden entirely when both are zero, which is every
+      // lead created before 031.
+      render: (l) => (
+        <span className="inline-flex flex-col items-end leading-tight">
+          <span className="font-medium text-gray-800 tnum">{fmt(l.value)}</span>
+          {(l.otc > 0 || l.mmc > 0) && (
+            <span className="text-[10px] text-gray-400 tnum">
+              {l.otc > 0 && fmt(l.otc)}
+              {l.otc > 0 && l.mmc > 0 && ' · '}
+              {l.mmc > 0 && `${fmt(l.mmc)}/mo`}
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: 'priority',
