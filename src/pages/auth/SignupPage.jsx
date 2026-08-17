@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Link, useNavigate }  from 'react-router-dom'
-import { User, Mail, Building2, ArrowRight } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore.js'
 import {
   AuthField, PasswordField, AuthAlert, AuthDivider,
@@ -57,13 +57,16 @@ export function SignupPage() {
   }
 
   return (
-    <div className="p-8">
+    // step068 — no card, no p-8. AuthLayout owns the frame now; this is just
+    // the form. Matches LoginPage exactly so the two do not look like two
+    // different products either side of one link.
+    <div>
       {/* Header */}
-      <div className="mb-7">
-        <h2 className="font-display font-bold text-2xl text-gray-900 mb-1.5">
+      <div className="mb-6">
+        <h1 className="font-display font-semibold text-gray-900 text-[22px] leading-tight tracking-tight">
           Create your account
-        </h2>
-        <p className="text-sm text-gray-500">
+        </h1>
+        <p className="text-[13px] text-gray-500 mt-1.5">
           Get started with Accord CRM — no credit card required.
         </p>
       </div>
@@ -71,9 +74,9 @@ export function SignupPage() {
       {/* Server error */}
       {error && <AuthAlert type="error" message={error} className="mb-4" />}
 
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
         {/* Full name */}
-        <AuthField label="Full name" id="name" error={fieldErrors.name} icon={User}>
+        <AuthField label="Full name" id="name" error={fieldErrors.name}>
           <input
             type="text"
             autoComplete="name"
@@ -85,7 +88,7 @@ export function SignupPage() {
         </AuthField>
 
         {/* Work email */}
-        <AuthField label="Work email" id="email" error={fieldErrors.email} icon={Mail}>
+        <AuthField label="Work email" id="email" error={fieldErrors.email}>
           <input
             type="email"
             autoComplete="email"
@@ -100,7 +103,6 @@ export function SignupPage() {
         <AuthField
           label="Company name"
           id="company"
-          icon={Building2}
           hint="Optional — helps us personalise your experience."
         >
           <input
@@ -175,10 +177,21 @@ export function SignupPage() {
         />
       </form>
 
+      {/* step068 — how an account actually becomes usable, said once.
+          Signing up with an address that has a pending invitation joins that
+          workspace automatically (024's trigger, before the first token is
+          minted). Signing up with any other address creates an account with no
+          membership, which lands on the "no organisation" screen. Saying so
+          here is cheaper than a support message later. */}
+      <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
+        Use the address your workspace invited — signing up with a different one
+        will not join you to the team.
+      </p>
+
       <AuthDivider label="already have an account?" />
 
-      <p className="text-center text-sm text-gray-500">
-        <Link to="/login" className="text-teal-600 hover:text-teal-700 font-semibold">
+      <p className="text-[13px] text-gray-500">
+        <Link to="/login" className="text-gray-900 font-medium hover:underline">
           Sign in instead
         </Link>
       </p>

@@ -4,8 +4,19 @@ import {
 } from 'lucide-react'
 import { Spinner } from '../ui/Spinner.jsx'
 
-// ── Auth field with optional leading icon ──────────────────────────────────────
-export function AuthField({ label, id, error, hint, icon: Icon, children }) {
+// ── Auth field ────────────────────────────────────────────────────────────────
+//
+// step068 — THE LEADING ICON IS GONE, and the `icon` prop is now ignored
+// rather than removed. Four call sites pass one; accepting and dropping it
+// means this batch does not have to touch all four to change the styling, and
+// a leftover `icon={Mail}` is harmless instead of a crash.
+//
+// Same argument as step059's FormKit: an envelope beside a field labelled
+// "Email address" repeats the label in a second alphabet, costs the input 9px
+// of left padding, and has to be special-cased for anything that is not one
+// line tall. It went from every create dialog in step059; this was the last
+// place it survived.
+export function AuthField({ label, id, error, hint, children }) {
   const child = React.Children.only(children)
   return (
     <div>
@@ -15,18 +26,11 @@ export function AuthField({ label, id, error, hint, icon: Icon, children }) {
         </label>
       )}
       <div className="relative">
-        {Icon && (
-          <Icon
-            size={16}
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10"
-          />
-        )}
         {React.cloneElement(child, {
           id,
           className: [
             'input-base',
-            Icon ? 'pl-10' : '',
-            error ? 'border-red-300 focus:border-red-400 focus:ring-red-400/20' : '',
+            error ? 'border-red-300 focus:border-red-400' : '',
             child.props.className || '',
           ].filter(Boolean).join(' '),
         })}

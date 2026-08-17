@@ -39,7 +39,26 @@ export const useAuthStore = create(
       // ── State ─────────────────────────────────────────────────────────────
       user:            null,
       isAuthenticated: false,
-      isLoading:       false,  // covers both initial hydration and action loading
+      // step068 — TWO FLAGS, because these were one flag doing two jobs.
+      //
+      // `isLoading` used to cover "restoring the initial session" AND "a form
+      // request is in flight", and its own comment said so. GuestRoute reads
+      // it to decide whether to render a spinner INSTEAD OF the auth pages —
+      // so the moment any auth action set isLoading: true, GuestRoute swapped
+      // the whole subtree for a spinner, UNMOUNTING the page mid-request. When
+      // the request finished the page REMOUNTED with fresh useState.
+      //
+      // That is the "reset link sent, then it goes back to the forgot-password
+      // form" bug: `submitted` was set on a component that had already been
+      // destroyed. Signup's "check your email" screen had it too, and any
+      // half-typed field on those pages was being wiped on every attempt.
+      //
+      // `isBootstrapping` is now the ROUTING signal — set true here at
+      // creation, and cleared only by initialize(). `isLoading` stays the
+      // ACTION signal that buttons read. Nothing else may write
+      // isBootstrapping: a second writer puts us back where we started.
+      isBootstrapping: true,
+      isLoading:       false,  // form/action requests only — never routing
       error:           null,
 
       // ── Auth flow UI states ────────────────────────────────────────────────
@@ -51,19 +70,22 @@ export const useAuthStore = create(
       // localStorage (Supabase handles that automatically) and hydrates the
       // store if a valid session is found.
       initialize: async () => {
-        set({ isLoading: true })
+        // Deliberately does NOT touch isLoading. It is already true at store
+        // creation via isBootstrapping, and setting isLoading here is what
+        // used to make the guards and the form buttons share a signal.
+        set({ isBootstrapping: true })
         try {
           const session = await getSession()
           if (session?.user) {
             const profile = await fetchProfile(session.user.id)
             const user    = buildUser(session.user, profile)
-            set({ user, isAuthenticated: true, isLoading: false })
+            set({ user, isAuthenticated: true, isBootstrapping: false })
           } else {
-            set({ user: null, isAuthenticated: false, isLoading: false })
+            set({ user: null, isAuthenticated: false, isBootstrapping: false })
           }
         } catch {
           // Network failure, expired session etc. — clear and let user log in again
-          set({ user: null, isAuthenticated: false, isLoading: false })
+          set({ user: null, isAuthenticated: false, isBootstrapping: false })
         }
       },
 

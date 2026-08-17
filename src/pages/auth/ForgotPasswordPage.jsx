@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Mail, ArrowLeft, CheckCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore.js'
 import {
   AuthField, AuthAlert, AuthSubmitButton,
@@ -13,6 +13,19 @@ export function ForgotPasswordPage() {
 
   const { forgotPassword, isLoading, error, clearError } = useAuthStore()
 
+  // ── The bug this page was reported for ────────────────────────────────────
+  // "the mail comes but it reloads back to the forgot-password form."
+  //
+  // Nothing was wrong HERE. `forgotPassword` always returns { success: true }
+  // and this always called setSubmitted(true). The problem was that
+  // GuestRoute read the same `isLoading` flag the store sets while the request
+  // is in flight, so it swapped this whole page for a spinner — UNMOUNTING it
+  // — and remounted it fresh when the request resolved. `submitted` was being
+  // set on a component that no longer existed.
+  //
+  // Fixed in step068 by splitting the store flag: GuestRoute now reads
+  // `isBootstrapping`, which only initialize() writes. See authStore.js.
+  // This page is unchanged in behaviour; only its styling moved.
   const handleSubmit = async (e) => {
     e.preventDefault()
     setFormError('')
@@ -27,20 +40,23 @@ export function ForgotPasswordPage() {
   // ── Success state ─────────────────────────────────────────────────────────
   if (submitted) {
     return (
-      <div className="p-8 text-center">
-        <div className="w-16 h-16 bg-teal-50 rounded-2xl flex items-center justify-center mx-auto mb-4 ring-1 ring-teal-200">
-          <CheckCircle size={28} className="text-teal-500" />
+      <div>
+        <div className="w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center mb-4">
+          <CheckCircle size={18} className="text-emerald-600" />
         </div>
-        <h2 className="font-display font-bold text-2xl text-gray-900 mb-2">Check your inbox</h2>
-        <p className="text-sm text-gray-500 mb-1">
-          If an account exists for
+        <h1 className="font-display font-semibold text-gray-900 text-[22px] leading-tight tracking-tight">
+          Check your inbox
+        </h1>
+        <p className="text-[13px] text-gray-500 mt-1.5 leading-relaxed">
+          If an account exists for <span className="text-gray-900 font-medium">{email}</span>,
+          a password reset link is on its way. It expires in one hour.
         </p>
-        <p className="text-sm font-semibold text-gray-800 mb-5">{email}</p>
-        <p className="text-sm text-gray-500 mb-6">
-          you'll receive a password reset link shortly.
+        <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">
+          Nothing after a few minutes? Check spam, and confirm the address is
+          the one your workspace was set up with.
         </p>
 
-        <div className="space-y-3">
+        <div className="space-y-2 mt-6">
           <Link to="/login" className="btn-primary inline-flex w-full justify-center">
             Back to sign in
           </Link>
@@ -59,14 +75,14 @@ export function ForgotPasswordPage() {
   const displayError = formError || error
 
   return (
-    <div className="p-8">
+    <div>
       {/* Heading */}
-      <div className="mb-7">
-        <h2 className="font-display font-bold text-2xl text-gray-900 mb-1.5">
-          Forgot your password?
-        </h2>
-        <p className="text-sm text-gray-500">
-          No worries — enter your work email and we'll send a reset link.
+      <div className="mb-6">
+        <h1 className="font-display font-semibold text-gray-900 text-[22px] leading-tight tracking-tight">
+          Reset your password
+        </h1>
+        <p className="text-[13px] text-gray-500 mt-1.5">
+          Enter your work email and we&apos;ll send you a reset link.
         </p>
       </div>
 
@@ -75,8 +91,8 @@ export function ForgotPasswordPage() {
         <AuthAlert type="error" message={displayError} className="mb-4" />
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <AuthField label="Email address" id="email" icon={Mail}>
+      <form onSubmit={handleSubmit} className="space-y-3.5" noValidate>
+        <AuthField label="Email address" id="email">
           <input
             type="email"
             autoComplete="email"
@@ -95,10 +111,10 @@ export function ForgotPasswordPage() {
       </form>
 
       {/* Back link */}
-      <div className="mt-6 text-center">
+      <div className="mt-6">
         <Link
           to="/login"
-          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 font-medium"
+          className="inline-flex items-center gap-1.5 text-[13px] text-gray-500 hover:text-gray-900 font-medium"
         >
           <ArrowLeft size={14} />
           Back to sign in
